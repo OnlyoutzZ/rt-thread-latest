@@ -16,11 +16,11 @@
 #ifdef BSP_USING_ONCHIP_RTC
 
 #ifndef RTC_BKP_REG1
-    #define RTC_BKP_REG1 1U
+#define RTC_BKP_REG1 1U
 #endif
 
 //#define DRV_DEBUG
-#define LOG_TAG             "drv.rtc"
+#define LOG_TAG "drv.rtc"
 #include <drv_log.h>
 
 
@@ -28,14 +28,14 @@
 
 struct rtc_device_object
 {
-    rt_rtc_dev_t  rtc_dev;
+    rt_rtc_dev_t rtc_dev;
 #ifdef RT_USING_ALARM
-    struct rt_rtc_wkalarm   wkalarm;
+    struct rt_rtc_wkalarm wkalarm;
 #endif
 };
 
 #ifdef RT_USING_ALARM
-static rt_err_t rtc_alarm_time_set(struct rtc_device_object* p_dev);
+static rt_err_t rtc_alarm_time_set(struct rtc_device_object *p_dev);
 static int rt_rtc_alarm_init(void);
 static RTC_AlarmType Alarm_InitStruct = { 0 };
 static EXTI_InitType EXTI_InitStructure = { 0 };
@@ -59,25 +59,25 @@ static rt_err_t n32_rtc_get_timeval(struct timeval *tv)
 {
     uint32_t SubSeconds;
     uint32_t Div_Sync;
-    RTC_TimeType RTC_TimeStruct = {0};
-    RTC_DateType RTC_DateStruct = {0};
-    struct tm tm_new = {0};
+    RTC_TimeType RTC_TimeStruct = { 0 };
+    RTC_DateType RTC_DateStruct = { 0 };
+    struct tm tm_new = { 0 };
 
     RTC_GetTime(RTC_FORMAT_BIN, &RTC_TimeStruct);
     RTC_GetDate(RTC_FORMAT_BIN, &RTC_DateStruct);
 
-    tm_new.tm_sec  = RTC_TimeStruct.Seconds;
-    tm_new.tm_min  = RTC_TimeStruct.Minutes;
+    tm_new.tm_sec = RTC_TimeStruct.Seconds;
+    tm_new.tm_min = RTC_TimeStruct.Minutes;
     tm_new.tm_hour = RTC_TimeStruct.Hours;
 
     tm_new.tm_mday = RTC_DateStruct.Date;
-    tm_new.tm_mon  = RTC_DateStruct.Month - 1;
+    tm_new.tm_mon = RTC_DateStruct.Month - 1;
     tm_new.tm_year = RTC_DateStruct.Year + 100;
 
     tv->tv_sec = timegm(&tm_new);
 
     SubSeconds = (uint32_t)(RTC->SUBS);
-    Div_Sync   = (uint32_t)((RTC->PRE) & 0x00007FFFU);
+    Div_Sync = (uint32_t)((RTC->PRE) & 0x00007FFFU);
     tv->tv_usec = ((Div_Sync * 1.0) - (SubSeconds * 1.0)) / ((Div_Sync + 1U) * 1.0) * 1000.0 * 1000.0;
 
     return RT_EOK;
@@ -86,9 +86,9 @@ static rt_err_t n32_rtc_get_timeval(struct timeval *tv)
 
 static rt_err_t set_rtc_time_stamp(time_t time_stamp)
 {
-    RTC_TimeType RTC_TimeStruct = {0};
-    RTC_DateType RTC_DateStruct = {0};
-    struct tm tm = {0};
+    RTC_TimeType RTC_TimeStruct = { 0 };
+    RTC_DateType RTC_DateStruct = { 0 };
+    struct tm tm = { 0 };
 
     gmtime_r(&time_stamp, &tm);
     if (tm.tm_year < 100)
@@ -96,12 +96,12 @@ static rt_err_t set_rtc_time_stamp(time_t time_stamp)
         return -RT_ERROR;
     }
 
-    RTC_TimeStruct.Seconds = tm.tm_sec ;
-    RTC_TimeStruct.Minutes = tm.tm_min ;
-    RTC_TimeStruct.Hours   = tm.tm_hour;
-    RTC_DateStruct.Date    = tm.tm_mday;
-    RTC_DateStruct.Month   = tm.tm_mon + 1 ;
-    RTC_DateStruct.Year    = tm.tm_year - 100;
+    RTC_TimeStruct.Seconds = tm.tm_sec;
+    RTC_TimeStruct.Minutes = tm.tm_min;
+    RTC_TimeStruct.Hours = tm.tm_hour;
+    RTC_DateStruct.Date = tm.tm_mday;
+    RTC_DateStruct.Month = tm.tm_mon + 1;
+    RTC_DateStruct.Year = tm.tm_year - 100;
     RTC_DateStruct.WeekDay = tm.tm_wday + 1;
 
     if (RTC_ConfigTime(RTC_FORMAT_BIN, &RTC_TimeStruct) == ERROR)
@@ -123,7 +123,7 @@ static rt_err_t set_rtc_time_stamp(time_t time_stamp)
 static rt_err_t rt_rtc_config(void)
 {
     uint32_t SynchPrediv, AsynchPrediv;
-    RTC_InitType  RTC_InitStructure = { 0 };
+    RTC_InitType RTC_InitStructure = { 0 };
 
 #if defined(SOC_SERIES_N32H7xx)
     /* Enable the PWR clock */
@@ -145,7 +145,7 @@ static rt_err_t rt_rtc_config(void)
     }
     RCC_ConfigRtcClk(RCC_RTCCLK_SRC_LSI, RCC_RTCCLK_HSEDIV63);
 #endif
-    SynchPrediv  = 0xF9;
+    SynchPrediv = 0xF9;
     AsynchPrediv = 0x7F;
 #elif defined(BSP_RTC_USING_LSE)
 #if defined(SOC_SERIES_N32H7xx)
@@ -161,7 +161,7 @@ static rt_err_t rt_rtc_config(void)
 
     RCC_ConfigRtcClk(RCC_RTCCLK_SRC_LSE, RCC_RTCCLK_HSEDIV_MASK);
 #endif
-    SynchPrediv  = 0xFF;
+    SynchPrediv = 0xFF;
     AsynchPrediv = 0x7F;
 #else
 #if defined(SOC_SERIES_N32H7xx)
@@ -174,7 +174,7 @@ static rt_err_t rt_rtc_config(void)
     }
     RCC_ConfigRtcClk(RCC_RTCCLK_SRC_HSEDIV, RCC_RTCCLK_HSEDIV50);
 #endif
-    SynchPrediv  = 0x1387;
+    SynchPrediv = 0x1387;
     AsynchPrediv = 0x63;
 #endif
 
@@ -195,8 +195,8 @@ static rt_err_t rt_rtc_config(void)
         LOG_I("RTC hasn't been configured, please use <date> command to config.");
 
         RTC_InitStructure.RTC_AsynchPrediv = AsynchPrediv;
-        RTC_InitStructure.RTC_SynchPrediv  = SynchPrediv;
-        RTC_InitStructure.RTC_HourFormat   = RTC_24HOUR_FORMAT;
+        RTC_InitStructure.RTC_SynchPrediv = SynchPrediv;
+        RTC_InitStructure.RTC_HourFormat = RTC_24HOUR_FORMAT;
 
         if (RTC_Init(&RTC_InitStructure) == ERROR)
         {
@@ -225,7 +225,7 @@ static rt_err_t n32_rtc_get_secs(time_t *sec)
     struct timeval tv;
 
     n32_rtc_get_timeval(&tv);
-    *(time_t *) sec = tv.tv_sec;
+    *(time_t *)sec = tv.tv_sec;
     LOG_D("RTC: get rtc_time %d", *sec);
 
     return RT_EOK;
@@ -268,12 +268,12 @@ static rt_err_t n32_rtc_set_alarm(struct rt_rtc_wkalarm *alarm)
     LOG_D("RT_DEVICE_CTRL_RTC_SET_ALARM");
     if (alarm != RT_NULL)
     {
-        rtc_device.wkalarm.enable  = alarm->enable;
+        rtc_device.wkalarm.enable = alarm->enable;
         rtc_device.wkalarm.tm_hour = alarm->tm_hour;
-        rtc_device.wkalarm.tm_min  = alarm->tm_min;
-        rtc_device.wkalarm.tm_sec  = alarm->tm_sec;
+        rtc_device.wkalarm.tm_min = alarm->tm_min;
+        rtc_device.wkalarm.tm_sec = alarm->tm_sec;
         rtc_device.wkalarm.tm_mday = alarm->tm_mday;
-        rtc_device.wkalarm.tm_mon  = alarm->tm_mon;
+        rtc_device.wkalarm.tm_mon = alarm->tm_mon;
         rtc_device.wkalarm.tm_year = alarm->tm_year;
         rtc_alarm_time_set(&rtc_device);
     }
@@ -292,8 +292,7 @@ static rt_err_t n32_rtc_set_alarm(struct rt_rtc_wkalarm *alarm)
 }
 
 
-static const struct rt_rtc_ops n32_rtc_ops =
-{
+static const struct rt_rtc_ops n32_rtc_ops = {
     n32_rtc_init,
     n32_rtc_get_secs,
     n32_rtc_set_secs,
@@ -302,7 +301,6 @@ static const struct rt_rtc_ops n32_rtc_ops =
     n32_rtc_get_timeval,
     RT_NULL,
 };
-
 
 
 #ifdef RT_USING_ALARM
@@ -331,9 +329,9 @@ void rt_rtc_alarm_enable(void)
     EXTI_InitStruct(&EXTI_InitStructure);
 
 #if defined(SOC_SERIES_N32H7xx)
-    EXTI_InitStructure.EXTI_Line    = EXTI_LINE17;
+    EXTI_InitStructure.EXTI_Line = EXTI_LINE17;
 #endif
-    EXTI_InitStructure.EXTI_Mode    = EXTI_Mode_Interrupt;
+    EXTI_InitStructure.EXTI_Mode = EXTI_Mode_Interrupt;
     EXTI_InitStructure.EXTI_Trigger = EXTI_Trigger_Rising;
     EXTI_InitStructure.EXTI_LineCmd = ENABLE;
     EXTI_InitPeripheral(&EXTI_InitStructure);
@@ -350,7 +348,7 @@ void rt_rtc_alarm_disable(void)
 
     EXTI_InitStructure.EXTI_LineCmd = DISABLE;
 #if defined(SOC_SERIES_N32H7xx)
-    EXTI_InitStructure.EXTI_Line    = EXTI_LINE17;
+    EXTI_InitStructure.EXTI_Line = EXTI_LINE17;
     EXTI_InitPeripheral(&EXTI_InitStructure);
 
     EXTI_ClrITPendBit(EXTI_LINE17);
@@ -364,21 +362,21 @@ static int rt_rtc_alarm_init(void)
     return RT_EOK;
 }
 
-static rt_err_t rtc_alarm_time_set(struct rtc_device_object* p_dev)
+static rt_err_t rtc_alarm_time_set(struct rtc_device_object *p_dev)
 {
     if (p_dev->wkalarm.enable)
     {
         /* Disable the AlarmX */
         RTC_EnableAlarm(RTC_A_ALARM, DISABLE);
 
-        Alarm_InitStruct.AlarmTime.Hours   = p_dev->wkalarm.tm_hour;
+        Alarm_InitStruct.AlarmTime.Hours = p_dev->wkalarm.tm_hour;
         Alarm_InitStruct.AlarmTime.Minutes = p_dev->wkalarm.tm_min;
         Alarm_InitStruct.AlarmTime.Seconds = p_dev->wkalarm.tm_sec;
-        Alarm_InitStruct.DateWeekValue     = p_dev->wkalarm.tm_mday;
+        Alarm_InitStruct.DateWeekValue = p_dev->wkalarm.tm_mday;
 
-        Alarm_InitStruct.AlarmTime.H12     = RTC_AM_H12;
-        Alarm_InitStruct.DateWeekMode      = RTC_ALARM_SEL_WEEKDAY_DATE;
-        Alarm_InitStruct.AlarmMask         = RTC_ALARMMASK_NONE;
+        Alarm_InitStruct.AlarmTime.H12 = RTC_AM_H12;
+        Alarm_InitStruct.DateWeekMode = RTC_ALARM_SEL_WEEKDAY_DATE;
+        Alarm_InitStruct.AlarmMask = RTC_ALARMMASK_NONE;
 
         LOG_D("alarm set:%d:%d:%d", Alarm_InitStruct.AlarmTime.Hours,
               Alarm_InitStruct.AlarmTime.Minutes,
