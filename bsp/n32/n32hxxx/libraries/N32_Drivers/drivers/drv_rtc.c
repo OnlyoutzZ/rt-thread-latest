@@ -133,24 +133,43 @@ static rt_err_t rt_rtc_config(void)
 
     /* Disable RTC clock */
     RCC_EnableAPB5PeriphClk2(RCC_APB5_PERIPHEN_M7_RTCPCLK, DISABLE);
+#elif defined(SOC_SERIES_N32H47x_48x)
+    /* Enable the PWR clock */
+    RCC_EnableAPB1PeriphClk(RCC_APB1_PERIPH_PWR | RCC_APB1_PERIPH_BKP, ENABLE);
+#elif defined(SOC_SERIES_N32H49x)
+    /* Enable the PWR clock */
+    RCC_EnableAPB1PeriphClk(RCC_APB1_PERIPHEN_PWR | RCC_APB1_PERIPHEN_BKP, ENABLE);
+#endif
+
+#if defined(SOC_SERIES_N32H47x_48x) || defined(SOC_SERIES_N32H49x)
+    /* Allow access to RTC */
+    PWR_BackupAccessEnable(ENABLE);
+
+    /* Disable RTC clock */
+    RCC_EnableRtcClk(DISABLE);
 #endif
 
 #if defined(BSP_RTC_USING_LSI)
-#if defined(SOC_SERIES_N32H7xx)
     /* Enable the LSI OSC */
     RCC_EnableLsi(ENABLE);
     if (RCC_WaitLsiStable() == ERROR)
     {
         return -RT_ERROR;
     }
+
+#if defined(SOC_SERIES_N32H7xx)
     RCC_ConfigRtcClk(RCC_RTCCLK_SRC_LSI, RCC_RTCCLK_HSEDIV63);
-#endif
+
     SynchPrediv = 0xF9;
     AsynchPrediv = 0x7F;
+#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x)
+    RCC_ConfigRtcClk(RCC_RTCCLK_SRC_LSI);
+
+    SynchPrediv = 0xFB;
+    AsynchPrediv = 0x7F;
+#endif
 #elif defined(BSP_RTC_USING_LSE)
-#if defined(SOC_SERIES_N32H7xx)
     /* Enable the LSI */
-    RCC_EnableLsi(ENABLE);
     RCC_ConfigLse(RCC_LSE_ENABLE);
 
     /****Waite LSE Ready *****/
@@ -159,36 +178,61 @@ static rt_err_t rt_rtc_config(void)
         return -RT_ERROR;
     }
 
+#if defined(SOC_SERIES_N32H7xx)
     RCC_ConfigRtcClk(RCC_RTCCLK_SRC_LSE, RCC_RTCCLK_HSEDIV_MASK);
+#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x)
+    RCC_ConfigRtcClk(RCC_RTCCLK_SRC_LSE);
 #endif
     SynchPrediv = 0xFF;
     AsynchPrediv = 0x7F;
 #else
-#if defined(SOC_SERIES_N32H7xx)
     /* Enable HSE */
-    RCC_EnableLsi(ENABLE);
     RCC_ConfigHse(RCC_HSE_ENABLE);
     if (RCC_WaitHseStable() == ERROR)
     {
         return -RT_ERROR;
     }
+
+#if defined(SOC_SERIES_N32H7xx)
     RCC_ConfigRtcClk(RCC_RTCCLK_SRC_HSEDIV, RCC_RTCCLK_HSEDIV50);
-#endif
+
     SynchPrediv = 0x1387;
     AsynchPrediv = 0x63;
+#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x)
+    RCC_ConfigRtcClk(RCC_RTCCLK_SRC_HSE_DIV128);
+
+    SynchPrediv = 0x3E7;
+    AsynchPrediv = 0x7C;
+#endif
 #endif
 
 #if defined(SOC_SERIES_N32H7xx)
     /* Enable the RTC Clock */
     RCC_EnableAPB5PeriphClk2(RCC_APB5_PERIPHEN_M7_RTCPCLK, ENABLE);
     RCC_EnableAPB5PeriphClk2(RCC_APB5_PERIPHEN_M7_RTCPCLKLP, ENABLE);
+#endif
     RCC_EnableRtcClk(ENABLE);
 
-    if (RTC_WaitForSynchro() == ERROR)
+    /* Wait for RTC register synchronization */
+    rt_uint32_t sync_try;
+    rt_bool_t synced = RT_FALSE;
+
+    for (sync_try = 0; sync_try < 3; sync_try++)
     {
+        if (RTC_WaitForSynchro() == SUCCESS)
+        {
+            synced = RT_TRUE;
+            break;
+        }
+
+        LOG_W("RTC sync not ready (try %d/3)", sync_try + 1);
+    }
+
+    if (!synced)
+    {
+        LOG_E("RTC sync timeout, RTC may be unusable.");
         return -RT_ERROR;
     }
-#endif
 
     if (RTC_BKUP_Read(RTC_BKP_REG1) != BKUP_REG_DATA)
     {
@@ -322,23 +366,26 @@ void rt_rtc_alarm_enable(void)
           Alarm_InitStruct.AlarmTime.Minutes,
           Alarm_InitStruct.AlarmTime.Seconds);
 
-
     RTC_ClrIntPendingBit(RTC_INT_ALRA);
     EXTI_ClrITPendBit(EXTI_LINE17);
 
     EXTI_InitStruct(&EXTI_InitStructure);
 
-#if defined(SOC_SERIES_N32H7xx)
     EXTI_InitStructure.EXTI_Line = EXTI_LINE17;
-#endif
     EXTI_InitStructure.EXTI_Mode = EXTI_Mode_Interrupt;
     EXTI_InitStructure.EXTI_Trigger = EXTI_Trigger_Rising;
     EXTI_InitStructure.EXTI_LineCmd = ENABLE;
     EXTI_InitPeripheral(&EXTI_InitStructure);
 
     NVIC_PriorityGroupConfig(NVIC_PriorityGroup_2);
+
+#if defined(SOC_SERIES_N32H7xx)
     NVIC_SetPriority(RTC_ALARM_IRQn, NVIC_EncodePriority(NVIC_GetPriorityGrouping(), 0x02, 0));
     NVIC_EnableIRQ(RTC_ALARM_IRQn);
+#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x)
+    NVIC_SetPriority(RTCAlarm_IRQn, NVIC_EncodePriority(NVIC_GetPriorityGrouping(), 0x02, 0));
+    NVIC_EnableIRQ(RTCAlarm_IRQn);
+#endif
 }
 
 void rt_rtc_alarm_disable(void)
@@ -346,15 +393,18 @@ void rt_rtc_alarm_disable(void)
     /* Disable the AlarmX */
     RTC_EnableAlarm(RTC_A_ALARM, DISABLE);
 
+    /* Disable EXTI Line */
     EXTI_InitStructure.EXTI_LineCmd = DISABLE;
-#if defined(SOC_SERIES_N32H7xx)
     EXTI_InitStructure.EXTI_Line = EXTI_LINE17;
     EXTI_InitPeripheral(&EXTI_InitStructure);
 
     EXTI_ClrITPendBit(EXTI_LINE17);
-#endif
 
+#if defined(SOC_SERIES_N32H7xx)
     NVIC_DisableIRQ(RTC_ALARM_IRQn);
+#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x)
+    NVIC_DisableIRQ(RTCAlarm_IRQn);
+#endif
 }
 
 static int rt_rtc_alarm_init(void)
@@ -387,14 +437,16 @@ static rt_err_t rtc_alarm_time_set(struct rtc_device_object *p_dev)
     return RT_EOK;
 }
 
-
+#if defined(SOC_SERIES_N32H7xx)
 void RTC_ALARM_IRQHandler(void)
+#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x)
+void RTCAlarm_IRQHandler(void)
+#endif
 {
     rt_interrupt_enter();
 
-#if defined(SOC_SERIES_N32H7xx)
+    /* Clear EXTI Line Pend Bit */
     EXTI_ClrITPendBit(EXTI_LINE17);
-#endif
 
     if (RTC_GetITStatus(RTC_INT_ALRA) != RESET)
     {
