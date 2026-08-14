@@ -13,7 +13,7 @@ Change Log Since v5.2.1 Release.
 
 ## Components
 
-* **Drivers** 
+* **Drivers**
   * **Serial:** 
     * serial_v1
       * Fix correct data loss logic when RX ring buffer is full.
