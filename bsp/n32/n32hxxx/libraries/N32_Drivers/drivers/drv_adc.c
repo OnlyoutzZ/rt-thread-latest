@@ -261,7 +261,7 @@ static rt_err_t n32_adc_enabled(struct rt_adc_device *device, rt_int8_t channel,
 
 static rt_err_t n32_adc_get_value(struct rt_adc_device *device, rt_int8_t channel, rt_uint32_t *value)
 {
-    uint16_t Convert_Value;
+    uint16_t Convert_Value = 0;
     ADC_InitInfo_t *n32_adc_info;
 
     RT_ASSERT(device != RT_NULL);

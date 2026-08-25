@@ -122,7 +122,7 @@ static rt_err_t set_rtc_time_stamp(time_t time_stamp)
 
 static rt_err_t rt_rtc_config(void)
 {
-    uint32_t SynchPrediv, AsynchPrediv;
+    uint32_t SynchPrediv = 0, AsynchPrediv = 0;
     RTC_InitType RTC_InitStructure = { 0 };
 
 #if defined(SOC_SERIES_N32H7xx)

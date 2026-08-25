@@ -608,7 +608,6 @@ HAL_StatusTypeDef HAL_UART_Transmit_DMA(UART_HandleTypeDef *huart, uint8_t *fu8_
 }
 
 /*********************************************************************************
-<<<<<<< .mine
 * Function    : HAL_UART_Receive_DMA
 * Description : Receive an amount of data in DMA mode.
 * Input       : huart:        UART handle.

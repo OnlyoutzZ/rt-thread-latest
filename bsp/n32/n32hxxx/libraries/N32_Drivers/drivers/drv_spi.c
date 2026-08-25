@@ -767,7 +767,8 @@ static rt_err_t SP_Receive(struct n32_spi *spi_drv, uint8_t *pData, uint16_t Siz
     /* Wait to receive a byte */
     while (SPI_I2S_GetStatus(spi_drv->config->SPIx, SPI_I2S_RNE_FLAG) == RESET)
     {
-        spi_drv->config->SPIx->DAT;
+        volatile rt_uint32_t dummy = spi_drv->config->SPIx->DAT;
+        (void)dummy;
 
         if ((((rt_tick_get() - tickstart) >= Timeout) && (Timeout != 0xFFFFFFFFU)) || (Timeout == 0U))
         {
@@ -1108,7 +1109,8 @@ static rt_ssize_t spixfer(struct rt_spi_device *device, struct rt_spi_message *m
         while (SPI_I2S_GetStatus(spi_drv->config->SPIx, SPI_I2S_RNE_FLAG) != RESET)
         {
             /*clear RX buff*/
-            spi_drv->config->SPIx->DAT;
+            volatile rt_uint32_t dummy = spi_drv->config->SPIx->DAT;
+            (void)dummy;
 
             if ((rt_tick_get() - tickstart) > 1000U)
             {
@@ -1123,7 +1125,8 @@ static rt_ssize_t spixfer(struct rt_spi_device *device, struct rt_spi_message *m
         while (SPI_I2S_GetStatus(spi_drv->config->SPIx, SPI_I2S_OVER_FLAG) != RESET)
         {
             /*clear RX buff*/
-            spi_drv->config->SPIx->DAT;
+            volatile rt_uint32_t dummy = spi_drv->config->SPIx->DAT;
+            (void)dummy;
             SPI_I2S_GetStatus(spi_drv->config->SPIx, SPI_I2S_OVER_FLAG);
 
             if ((rt_tick_get() - tickstart) > 1000U)

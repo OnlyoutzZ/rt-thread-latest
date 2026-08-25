@@ -235,11 +235,10 @@ static rt_err_t n32_i2c_dma_init(struct n32_i2c_config *config, rt_bool_t is_rx)
     {
         return -RT_ERROR;
     }
-#endif
-
     /* enable dma irq */
     NVIC_SetPriority(dma_config->dma_irq, NVIC_EncodePriority(NVIC_GetPriorityGrouping(), 0, 0));
     NVIC_EnableIRQ(dma_config->dma_irq);
+#endif
 
     return RT_EOK;
 }
@@ -247,7 +246,7 @@ static rt_err_t n32_i2c_dma_init(struct n32_i2c_config *config, rt_bool_t is_rx)
 static rt_err_t n32_i2c_init(struct n32_i2c *i2c_drv)
 {
     rt_err_t ret;
-    uint32_t BusTim_Reg;
+    uint32_t BusTim_Reg = 0;
     I2C_InitType I2C_InitStructure;
     RT_ASSERT(i2c_drv != RT_NULL);
 
