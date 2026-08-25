@@ -58,6 +58,76 @@ menu "On-chip Peripheral Drivers"
                 depends on BSP_USING_UART3 && RT_SERIAL_USING_DMA
                 default n
 
+            config BSP_USING_UART4
+                bool "Enable UART4"
+                default n
+
+            config BSP_UART4_RX_USING_DMA
+                bool "Enable UART4 RX DMA"
+                depends on BSP_USING_UART4 && RT_SERIAL_USING_DMA
+                default n
+
+            config BSP_UART4_TX_USING_DMA
+                bool "Enable UART4 TX DMA"
+                depends on BSP_USING_UART4 && RT_SERIAL_USING_DMA
+                default n
+
+            config BSP_USING_UART5
+                bool "Enable UART5"
+                default n
+
+            config BSP_UART5_RX_USING_DMA
+                bool "Enable UART5 RX DMA"
+                depends on BSP_USING_UART5 && RT_SERIAL_USING_DMA
+                default n
+
+            config BSP_UART5_TX_USING_DMA
+                bool "Enable UART5 TX DMA"
+                depends on BSP_USING_UART5 && RT_SERIAL_USING_DMA
+                default n
+
+            config BSP_USING_UART6
+                bool "Enable UART6"
+                default n
+
+            config BSP_UART6_RX_USING_DMA
+                bool "Enable UART6 RX DMA"
+                depends on BSP_USING_UART6 && RT_SERIAL_USING_DMA
+                default n
+
+            config BSP_UART6_TX_USING_DMA
+                bool "Enable UART6 TX DMA"
+                depends on BSP_USING_UART6 && RT_SERIAL_USING_DMA
+                default n
+
+            config BSP_USING_UART7
+                bool "Enable UART7"
+                default n
+
+            config BSP_UART7_RX_USING_DMA
+                bool "Enable UART7 RX DMA"
+                depends on BSP_USING_UART7 && RT_SERIAL_USING_DMA
+                default n
+
+            config BSP_UART7_TX_USING_DMA
+                bool "Enable UART7 TX DMA"
+                depends on BSP_USING_UART7 && RT_SERIAL_USING_DMA
+                default n
+
+            config BSP_USING_UART8
+                bool "Enable UART8"
+                default n
+
+            config BSP_UART8_RX_USING_DMA
+                bool "Enable UART8 RX DMA"
+                depends on BSP_USING_UART8 && RT_SERIAL_USING_DMA
+                default n
+
+            config BSP_UART8_TX_USING_DMA
+                bool "Enable UART8 TX DMA"
+                depends on BSP_USING_UART8 && RT_SERIAL_USING_DMA
+                default n
+
         endif
 
     config BSP_USING_ON_CHIP_FLASH
@@ -80,6 +150,11 @@ menu "On-chip Peripheral Drivers"
                 bool "RTC USING LSI"
         endchoice
     endif
+
+    config BSP_USING_WDT
+        bool "Enable Watchdog Timer"
+        select RT_USING_WDT
+        default n
 
     menuconfig BSP_USING_FDCAN
         bool "Enable FDCAN (CAN FD)"
