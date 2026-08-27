@@ -1,0 +1,32 @@
+from building import *
+import os
+
+cwd = GetCurrentDir()
+src = []
+CPPPATH = [cwd]
+
+if GetDepend('BSP_USING_FDCAN'):
+    src += ['fdcan_test.c']
+if GetDepend('BSP_USING_ON_CHIP_FLASH'):
+    src += ['flash_test.c']
+if GetDepend('BSP_USING_NAND'):
+    src += ['nand_test.c']
+if GetDepend('BSP_USING_SDIO'):
+    src += ['sdmmc_test.c']
+if GetDepend('RT_USING_WDT'):
+    src += ['wdt_test.c']
+if GetDepend('BSP_USING_PULSE_ENCODER'):
+    src += ['encoder_test.c']
+if GetDepend('BSP_USING_LPTIM'):
+    src += ['lptim_test.c']
+if GetDepend('BSP_USING_PWM'):
+    src += ['pwm_test.c']
+if GetDepend('BSP_USING_CLOCK_TIMER'):
+    src += ['tim_tes.c']
+if GetDepend('BSP_USING_ONCHIP_RTC'):
+    src += ['rtc_test.c']
+if GetDepend('BSP_USING_QSPI'):
+    src += ['qspi_test.c']
+group = DefineGroup('test_file', src, depend = [''], CPPPATH = CPPPATH)
+
+Return('group')

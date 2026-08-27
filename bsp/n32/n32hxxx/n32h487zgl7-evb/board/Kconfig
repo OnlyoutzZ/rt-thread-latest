@@ -781,6 +781,64 @@ menu "On-chip Peripheral Drivers"
                 endif
         endif
 
+    menuconfig BSP_USING_NAND
+        bool "Enable Nand"
+        default n
+        select RT_USING_MTD_NAND
+        if BSP_USING_NAND
+            choice BSP_NAND_BANK_SEL
+                prompt "Select Bank"
+                default BSP_USING_NAND_BANK3
+
+                config BSP_USING_NAND_BANK2
+                    bool "USING FEMC NAND BANK2"
+
+                config BSP_USING_NAND_BANK3
+                    bool "USING FEMC NAND BANK3"
+            endchoice
+
+            choice BSP_NAND_BUS_WIDTH_SEL
+                prompt "Select Nand Bus Width"
+                default BSP_USING_NAND_BUS_WIDTH_8B
+
+                config BSP_USING_NAND_BUS_WIDTH_8B
+                    bool "USING FEMC NAND BUS WIDTH 8BIT"
+
+                config BSP_USING_NAND_BUS_WIDTH_16B
+                    bool "USING FEMC NAND BUS WIDTH 16BIT"
+            endchoice
+
+            config BSP_NAND_PAGE_SIZE
+                int "Page Size (bytes)"
+                default 2048
+                help
+                    NAND flash page size in bytes, typically 2048 or 4096.
+
+            config BSP_NAND_OOB_SIZE
+                int "OOB (Spare Area) Size (bytes)"
+                default 64
+                help
+                    NAND flash spare area size per page, typically 64 or 128.
+
+            config BSP_NAND_PAGES_PER_BLOCK
+                int "Pages Per Block"
+                default 64
+                help
+                    Number of pages per erase block, typically 64 or 128.
+
+            config BSP_NAND_BLOCK_COUNT
+                int "Total Block Count"
+                default 1024
+                help
+                    Total number of blocks in the NAND flash chip.
+
+            config BSP_NAND_PLANE_NUM
+                int "Plane Number"
+                default 1
+                help
+                    Number of planes in the NAND flash chip, typically 1 or 2.
+        endif
+
     source "$BSP_DIR/../libraries/N32_Drivers/drivers/Kconfig"
 
 endmenu
