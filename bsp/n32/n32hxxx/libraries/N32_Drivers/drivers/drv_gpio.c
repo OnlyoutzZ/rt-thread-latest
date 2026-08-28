@@ -17,86 +17,88 @@
 #define PIN_PORT(pin)     ((uint8_t)(((pin) >> 4U) & 0xFU))
 #define PIN_NO(pin)       ((uint8_t)((pin) & 0xFU))
 
-#define PIN_STPORT(pin) ((GPIO_Module *)(GPIOA_BASE + (0x400U * PIN_PORT(pin))))
-#define PIN_STPIN(pin)  ((uint16_t)(1U << PIN_NO(pin)))
+#define PIN_STPORT(pin)   ((GPIO_Module *)(GPIOA_BASE + (0x400U * PIN_PORT(pin))))
+#define PIN_STPIN(pin)    ((uint16_t)(1U << PIN_NO(pin)))
 
-#define ITEM_NUM(items) (sizeof(items) / sizeof((items)[0]))
+#define ITEM_NUM(items)   (sizeof(items) / sizeof((items)[0]))
 
 static uint32_t pin_irq_enable_mask = 0;
 
 #if defined(GPIOK)
 #if defined(SOC_SERIES_N32H7xx)
-#define __N32_PORT_MAX 8u
+    #define __N32_PORT_MAX 8u
 #endif
 #elif defined(GPIOJ)
-#define __N32_PORT_MAX 16u
+    #define __N32_PORT_MAX 16u
 #elif defined(GPIOI)
-#define __N32_PORT_MAX 16u
+    #define __N32_PORT_MAX 16u
 #elif defined(GPIOH)
 #if defined(SOC_SERIES_N32H7xx)
-#define __N32_PORT_MAX 16u
+    #define __N32_PORT_MAX 16u
 #elif defined(SOC_SERIES_N32H49x)
-#define __N32_PORT_MAX 6u
-#elif defined(SOC_SERIES_N32H47x_48x)
-#define __N32_PORT_MAX 7u
+    #define __N32_PORT_MAX 6u
+#elif defined(SOC_SERIES_N32H47x_48x) 
+    #define __N32_PORT_MAX 7u
 #endif
 #elif defined(GPIOG)
-#define __N32_PORT_MAX 16u
+    #define __N32_PORT_MAX 16u
 #elif defined(GPIOF)
-#define __N32_PORT_MAX 16u
+    #define __N32_PORT_MAX 16u
 #elif defined(GPIOE)
-#define __N32_PORT_MAX 16u
+    #define __N32_PORT_MAX 16u
 #elif defined(GPIOD)
-#define __N32_PORT_MAX 16u
+    #define __N32_PORT_MAX 16u
 #elif defined(GPIOC)
-#define __N32_PORT_MAX 16u
+    #define __N32_PORT_MAX 16u
 #elif defined(GPIOB)
-#define __N32_PORT_MAX 16u
+    #define __N32_PORT_MAX 16u
 #elif defined(GPIOA)
-#define __N32_PORT_MAX 16u
+    #define __N32_PORT_MAX 16u
 #else
-#define __N32_PORT_MAX 0u
-#error Unsupported N32 GPIO peripheral.
+    #define __N32_PORT_MAX 0u
+    #error Unsupported N32 GPIO peripheral.
 #endif
 
 #define PIN_STPORT_MAX __N32_PORT_MAX
 
-static const struct pin_irq_map pin_irq_map[] = {
-    { GPIO_PIN_0, EXTI_LINE0, EXTI0_IRQn },
-    { GPIO_PIN_1, EXTI_LINE1, EXTI1_IRQn },
-    { GPIO_PIN_2, EXTI_LINE2, EXTI2_IRQn },
-    { GPIO_PIN_3, EXTI_LINE3, EXTI3_IRQn },
-    { GPIO_PIN_4, EXTI_LINE4, EXTI4_IRQn },
-    { GPIO_PIN_5, EXTI_LINE5, EXTI9_5_IRQn },
-    { GPIO_PIN_6, EXTI_LINE6, EXTI9_5_IRQn },
-    { GPIO_PIN_7, EXTI_LINE7, EXTI9_5_IRQn },
-    { GPIO_PIN_8, EXTI_LINE8, EXTI9_5_IRQn },
-    { GPIO_PIN_9, EXTI_LINE9, EXTI9_5_IRQn },
-    { GPIO_PIN_10, EXTI_LINE10, EXTI15_10_IRQn },
-    { GPIO_PIN_11, EXTI_LINE11, EXTI15_10_IRQn },
-    { GPIO_PIN_12, EXTI_LINE12, EXTI15_10_IRQn },
-    { GPIO_PIN_13, EXTI_LINE13, EXTI15_10_IRQn },
-    { GPIO_PIN_14, EXTI_LINE14, EXTI15_10_IRQn },
-    { GPIO_PIN_15, EXTI_LINE15, EXTI15_10_IRQn },
+static const struct pin_irq_map pin_irq_map[] =
+{
+    {GPIO_PIN_0,  EXTI_LINE0, EXTI0_IRQn},
+    {GPIO_PIN_1,  EXTI_LINE1, EXTI1_IRQn},
+    {GPIO_PIN_2,  EXTI_LINE2, EXTI2_IRQn},
+    {GPIO_PIN_3,  EXTI_LINE3, EXTI3_IRQn},
+    {GPIO_PIN_4,  EXTI_LINE4, EXTI4_IRQn},
+    {GPIO_PIN_5,  EXTI_LINE5, EXTI9_5_IRQn},
+    {GPIO_PIN_6,  EXTI_LINE6, EXTI9_5_IRQn},
+    {GPIO_PIN_7,  EXTI_LINE7, EXTI9_5_IRQn},
+    {GPIO_PIN_8,  EXTI_LINE8, EXTI9_5_IRQn},
+    {GPIO_PIN_9,  EXTI_LINE9, EXTI9_5_IRQn},
+    {GPIO_PIN_10, EXTI_LINE10, EXTI15_10_IRQn},
+    {GPIO_PIN_11, EXTI_LINE11, EXTI15_10_IRQn},
+    {GPIO_PIN_12, EXTI_LINE12, EXTI15_10_IRQn},
+    {GPIO_PIN_13, EXTI_LINE13, EXTI15_10_IRQn},
+    {GPIO_PIN_14, EXTI_LINE14, EXTI15_10_IRQn},
+    {GPIO_PIN_15, EXTI_LINE15, EXTI15_10_IRQn},
 };
 
-static struct rt_pin_irq_hdr pin_irq_hdr_tab[] = {
-    { -1, 0, RT_NULL, RT_NULL },
-    { -1, 0, RT_NULL, RT_NULL },
-    { -1, 0, RT_NULL, RT_NULL },
-    { -1, 0, RT_NULL, RT_NULL },
-    { -1, 0, RT_NULL, RT_NULL },
-    { -1, 0, RT_NULL, RT_NULL },
-    { -1, 0, RT_NULL, RT_NULL },
-    { -1, 0, RT_NULL, RT_NULL },
-    { -1, 0, RT_NULL, RT_NULL },
-    { -1, 0, RT_NULL, RT_NULL },
-    { -1, 0, RT_NULL, RT_NULL },
-    { -1, 0, RT_NULL, RT_NULL },
-    { -1, 0, RT_NULL, RT_NULL },
-    { -1, 0, RT_NULL, RT_NULL },
-    { -1, 0, RT_NULL, RT_NULL },
-    { -1, 0, RT_NULL, RT_NULL },
+static struct rt_pin_irq_hdr pin_irq_hdr_tab[] =
+{
+    {-1, 0, RT_NULL, RT_NULL},
+    {-1, 0, RT_NULL, RT_NULL},
+    {-1, 0, RT_NULL, RT_NULL},
+    {-1, 0, RT_NULL, RT_NULL},
+    {-1, 0, RT_NULL, RT_NULL},
+    {-1, 0, RT_NULL, RT_NULL},
+    {-1, 0, RT_NULL, RT_NULL},
+    {-1, 0, RT_NULL, RT_NULL},
+    {-1, 0, RT_NULL, RT_NULL},
+    {-1, 0, RT_NULL, RT_NULL},
+    {-1, 0, RT_NULL, RT_NULL},
+    {-1, 0, RT_NULL, RT_NULL},
+    {-1, 0, RT_NULL, RT_NULL},
+    {-1, 0, RT_NULL, RT_NULL},
+    {-1, 0, RT_NULL, RT_NULL},
+    {-1, 0, RT_NULL, RT_NULL},
 };
 
 /* e.g. PA.0 */
@@ -281,9 +283,9 @@ static rt_err_t n32_pin_attach_irq(struct rt_device *device, rt_base_t pin,
     level = rt_hw_interrupt_disable();
 
     if (pin_irq_hdr_tab[irqindex].pin == pin &&
-        pin_irq_hdr_tab[irqindex].hdr == hdr &&
-        pin_irq_hdr_tab[irqindex].mode == mode &&
-        pin_irq_hdr_tab[irqindex].args == args)
+            pin_irq_hdr_tab[irqindex].hdr == hdr &&
+            pin_irq_hdr_tab[irqindex].mode == mode &&
+            pin_irq_hdr_tab[irqindex].args == args)
     {
         rt_hw_interrupt_enable(level);
         return RT_EOK;
@@ -371,7 +373,7 @@ static rt_err_t n32_pin_irq_enable(struct rt_device *device, rt_base_t pin,
         /* EXTI Line Config */
 #if defined(SOC_SERIES_N32H7xx)
         GPIO_ConfigEXTILine(irqmap->exti_line, (PIN_NO(pin) * 11 + PIN_PORT(pin)));
-#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x)
+#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x) 
         // PA8-->Pin8--> PIN_PORT(1000)=0, PIN_NO(1000)=8
         // PB1-->Pin17--> PIN_PORT(10001)=1, PIN_NO(10001)=1
         GPIO_ConfigEXTILine(PIN_NO(pin), PIN_PORT(pin), PIN_NO(pin));
@@ -456,7 +458,8 @@ static rt_err_t n32_pin_irq_enable(struct rt_device *device, rt_base_t pin,
     return RT_EOK;
 }
 
-static const struct rt_pin_ops _n32_pin_ops = {
+static const struct rt_pin_ops _n32_pin_ops =
+{
     n32_pin_mode,
     n32_pin_write,
     n32_pin_read,
@@ -476,24 +479,33 @@ rt_inline void pin_irq_hdr(int irqno)
 
 void N32_GPIO_EXTI_Callback(uint16_t line_num)
 {
-#if defined(SOC_SERIES_N32H7xx)
+#if defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x)
+
+    if (EXTI_GetITStatus(line_num) != RESET)
+    {       
+        /* Clear EXTI line pending bit */
+        EXTI_ClrITPendBit(line_num);
+        
+        uint8_t index = 0;
+        uint32_t mask = line_num;
+
+        if (mask & 0xFF00)     { index += 8;  mask >>= 8; }
+        if (mask & 0xF0)       { index += 4;  mask >>= 4; }
+        if (mask & 0xC)        { index += 2;  mask >>= 2; }
+        if (mask & 0x2)        { index += 1; }
+        
+        if ((index < 16) && (pin_irq_hdr_tab[index].pin != -1))
+        {
+            pin_irq_hdr(index);
+        }
+    }
+#elif defined(SOC_SERIES_N32H7xx)
     if (pin_irq_hdr_tab[line_num].pin != -1 && EXTI_GetITStatus(line_num) != RESET)
     {
         /* Clear EXTI line pending bit */
         EXTI_ClrITPendBit(line_num);
 
         pin_irq_hdr(line_num);
-    }
-#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x)
-    {
-        rt_int32_t idx = bit2bitno(line_num);
-        if (idx >= 0 && idx < (rt_int32_t)ITEM_NUM(pin_irq_hdr_tab) && pin_irq_hdr_tab[idx].pin != -1 && EXTI_GetITStatus(line_num) != RESET)
-        {
-            /* Clear EXTI line pending bit */
-            EXTI_ClrITPendBit(line_num);
-
-            pin_irq_hdr(idx);
-        }
     }
 #endif
 }
@@ -564,9 +576,9 @@ int rt_hw_pin_init(void)
 #if defined(SOC_N32H78X)
     RCC_EnableAHB5PeriphClk2(RCC_AHB5_PERIPHEN_M4_AFIO, ENABLE);
 #endif /* SOC_N32H78X */
-#elif defined(SOC_SERIES_N32H49x)
+#elif defined(SOC_SERIES_N32H49x) 
     RCC_EnableAPB2PeriphClk(RCC_APB2_PERIPHEN_AFIO, ENABLE);
-#elif defined(SOC_SERIES_N32H47x_48x)
+#elif defined(SOC_SERIES_N32H47x_48x) 
     RCC_EnableAPB2PeriphClk(RCC_APB2_PERIPH_AFIO, ENABLE);
 #endif
 #endif /* AFIO */
@@ -583,7 +595,7 @@ int rt_hw_pin_init(void)
 #if defined(SOC_N32H78X)
     RCC_EnableAHB5PeriphClk1(RCC_AHB5_PERIPHEN_M4_GPIOA, ENABLE);
 #endif /* SOC_N32H78X */
-#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x)
+#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x) 
     RCC_EnableAHB1PeriphClk(RCC_AHB_PERIPHEN_GPIOA, ENABLE);
 #endif
 #endif /* GPIOA */
@@ -594,7 +606,7 @@ int rt_hw_pin_init(void)
 #if defined(SOC_N32H78X)
     RCC_EnableAHB5PeriphClk1(RCC_AHB5_PERIPHEN_M4_GPIOB, ENABLE);
 #endif /* SOC_N32H78X */
-#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x)
+#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x) 
     RCC_EnableAHB1PeriphClk(RCC_AHB_PERIPHEN_GPIOB, ENABLE);
 #endif
 #endif /* GPIOB */
@@ -605,7 +617,7 @@ int rt_hw_pin_init(void)
 #if defined(SOC_N32H78X)
     RCC_EnableAHB5PeriphClk1(RCC_AHB5_PERIPHEN_M4_GPIOC, ENABLE);
 #endif /* SOC_N32H78X */
-#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x)
+#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x) 
     RCC_EnableAHB1PeriphClk(RCC_AHB_PERIPHEN_GPIOC, ENABLE);
 #endif
 #endif /* GPIOC */
@@ -616,7 +628,7 @@ int rt_hw_pin_init(void)
 #if defined(SOC_N32H78X)
     RCC_EnableAHB5PeriphClk1(RCC_AHB5_PERIPHEN_M4_GPIOD, ENABLE);
 #endif /* SOC_N32H78X */
-#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x)
+#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x) 
     RCC_EnableAHB1PeriphClk(RCC_AHB_PERIPHEN_GPIOD, ENABLE);
 #endif
 #endif /* GPIOD */
@@ -627,7 +639,7 @@ int rt_hw_pin_init(void)
 #if defined(SOC_N32H78X)
     RCC_EnableAHB5PeriphClk1(RCC_AHB5_PERIPHEN_M4_GPIOE, ENABLE);
 #endif /* SOC_N32H78X */
-#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x)
+#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x) 
     RCC_EnableAHB1PeriphClk(RCC_AHB_PERIPHEN_GPIOE, ENABLE);
 #endif
 #endif /* GPIOE */
@@ -638,7 +650,7 @@ int rt_hw_pin_init(void)
 #if defined(SOC_N32H78X)
     RCC_EnableAHB5PeriphClk1(RCC_AHB5_PERIPHEN_M4_GPIOF, ENABLE);
 #endif /* SOC_N32H78X */
-#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x)
+#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x) 
     RCC_EnableAHB1PeriphClk(RCC_AHB_PERIPHEN_GPIOF, ENABLE);
 #endif
 #endif /* GPIOF */
@@ -649,7 +661,7 @@ int rt_hw_pin_init(void)
 #if defined(SOC_N32H78X)
     RCC_EnableAHB5PeriphClk1(RCC_AHB5_PERIPHEN_M4_GPIOG, ENABLE);
 #endif /* SOC_N32H78X */
-#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x)
+#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x) 
     RCC_EnableAHB1PeriphClk(RCC_AHB_PERIPHEN_GPIOG, ENABLE);
 #endif
 #endif /* GPIOG */
@@ -660,7 +672,7 @@ int rt_hw_pin_init(void)
 #if defined(SOC_N32H78X)
     RCC_EnableAHB5PeriphClk1(RCC_AHB5_PERIPHEN_M4_GPIOH, ENABLE);
 #endif /* SOC_N32H78X */
-#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x)
+#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x) 
     RCC_EnableAHB1PeriphClk(RCC_AHB_PERIPHEN_GPIOH, ENABLE);
 #endif
 #endif /* GPIOH */
