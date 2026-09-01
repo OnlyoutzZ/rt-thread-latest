@@ -17,6 +17,7 @@
 #include <drv_common.h>
 #include "drv_dma.h"
 #include <ipc/completion.h>
+#include "drv_config.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -44,8 +45,8 @@ struct n32_spi_device
 };
 
 
-#define SPI_USING_RX_DMA_FLAG (1 << 0)
-#define SPI_USING_TX_DMA_FLAG (1 << 1)
+#define SPI_USING_RX_DMA_FLAG   (1<<0)
+#define SPI_USING_TX_DMA_FLAG   (1<<1)
 
 typedef enum
 {
@@ -64,6 +65,7 @@ struct n32_spi
     SPI_InitType SPI_InitStructure;
     SPI_Work_Direct_t Direct;
 
+#if defined(SOC_SERIES_N32H7xx)
     struct
     {
         rt_bool_t DMA_Tx_Init;
@@ -72,6 +74,16 @@ struct n32_spi
         rt_bool_t DMA_Rx_Init;
         DMA_ChInitType RX_DMA_ChInitStr;
     } dma;
+#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x)
+    struct
+    {
+        rt_bool_t DMA_Tx_Init;
+        DMA_InitType TX_DMA_ChInitStr;
+
+        rt_bool_t DMA_Rx_Init;
+        DMA_InitType RX_DMA_ChInitStr;
+    } dma;
+#endif
 
     rt_uint8_t spi_dma_flag;
     struct rt_spi_bus spi_bus;

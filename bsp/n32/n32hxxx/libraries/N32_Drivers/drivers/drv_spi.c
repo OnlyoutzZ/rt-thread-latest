@@ -10,7 +10,9 @@
 
 #include <rtthread.h>
 #include <rtdevice.h>
+#include "drv_config.h"
 #include "board.h"
+
 
 #ifdef BSP_USING_SPI
 
@@ -22,7 +24,7 @@
 #include <string.h>
 
 //#define DRV_DEBUG
-#define LOG_TAG "drv.spi"
+#define LOG_TAG              "drv.spi"
 #include <drv_log.h>
 
 enum
@@ -51,7 +53,8 @@ enum
 };
 
 
-static struct n32_spi_config spi_config[] = {
+static struct n32_spi_config spi_config[] =
+{
 #ifdef BSP_USING_SPI1
     SPI1_BUS_CONFIG,
 #endif
@@ -92,6 +95,7 @@ static rt_err_t SPI_DMA_TransmitReceive(struct n32_spi *spi_drv, uint8_t *pTxDat
     if (spi_drv->dma.DMA_Rx_Init != RT_TRUE || spi_drv->dma.DMA_Tx_Init != RT_TRUE)
     {
         LOG_E("In full-duplex mode, both TX DMA and RX DMA did not complete initialization.");
+        
         return -RT_ERROR;
     }
 
@@ -102,16 +106,19 @@ static rt_err_t SPI_DMA_TransmitReceive(struct n32_spi *spi_drv, uint8_t *pTxDat
         DMA_ChannelCmd(spi_drv->config->dma_rx->Instance, spi_drv->config->dma_rx->dma_channel, DISABLE);
 
         if (!DMA_ControllerIsEnabled(spi_drv->config->dma_rx->Instance))
-        {
             DMA_ControllerCmd(spi_drv->config->dma_rx->Instance, ENABLE);
-        }
 
-        spi_drv->dma.RX_DMA_ChInitStr.IntEn = 1U;
-        spi_drv->dma.RX_DMA_ChInitStr.DstAddr = (uint32_t)pRxData;
+        spi_drv->dma.RX_DMA_ChInitStr.IntEn      = 1U;
+        spi_drv->dma.RX_DMA_ChInitStr.DstAddr    = (uint32_t)pRxData;
         spi_drv->dma.RX_DMA_ChInitStr.BlkTfrSize = Size;
 
         DMA_ControllerCmd(spi_drv->config->dma_rx->Instance, ENABLE);
-        if (DMA_ChannelInit(spi_drv->config->dma_rx->Instance, &spi_drv->dma.RX_DMA_ChInitStr, spi_drv->config->dma_rx->dma_channel) == 0U)
+        if (DMA_ChannelInit(spi_drv->config->dma_rx->Instance, &spi_drv->dma.RX_DMA_ChInitStr, spi_drv->config->dma_rx->dma_channel) != 0U)
+        {
+            LOG_E("SPI RX DMA channel initialization failed!");
+            return -RT_ERROR;
+        }
+        else
         {
             /* Enable transaction complete interrupt event */
             DMA_ChannelEventCmd(spi_drv->config->dma_rx->Instance, spi_drv->config->dma_rx->dma_channel, DMA_CH_EVENT_TRANSFER_COMPLETE, ENABLE);
@@ -121,6 +128,25 @@ static rt_err_t SPI_DMA_TransmitReceive(struct n32_spi *spi_drv, uint8_t *pTxDat
 
             SPI_I2S_EnableDma(spi_drv->config->SPIx, SPI_I2S_DMA_RX, ENABLE);
         }
+#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x)
+        /* SPI RX DMA Receive Data for H49X */
+        DMA_EnableChannel(spi_drv->config->dma_rx->DMAChx, DISABLE);
+
+        /* Configure DMA request remapping */
+        DMA_RequestRemap(spi_drv->config->dma_rx->request, spi_drv->config->dma_rx->DMAChx, ENABLE);
+
+        spi_drv->dma.RX_DMA_ChInitStr.MemAddr    = (uint32_t)pRxData;
+        spi_drv->dma.RX_DMA_ChInitStr.BufSize    = Size;
+
+        DMA_Init(spi_drv->config->dma_rx->DMAChx, &spi_drv->dma.RX_DMA_ChInitStr);
+
+        /* Enable transfer complete interrupt */
+        DMA_ConfigInt(spi_drv->config->dma_rx->DMAChx, DMA_INT_TXC, ENABLE);
+
+        /* Enable the specified DMA channel */
+        DMA_EnableChannel(spi_drv->config->dma_rx->DMAChx, ENABLE);
+
+        SPI_I2S_EnableDma(spi_drv->config->SPIx, SPI_I2S_DMA_RX, ENABLE);
 #endif
     }
     else
@@ -136,16 +162,22 @@ static rt_err_t SPI_DMA_TransmitReceive(struct n32_spi *spi_drv, uint8_t *pTxDat
         DMA_ChannelCmd(spi_drv->config->dma_tx->Instance, spi_drv->config->dma_tx->dma_channel, DISABLE);
 
         if (!DMA_ControllerIsEnabled(spi_drv->config->dma_tx->Instance))
-        {
             DMA_ControllerCmd(spi_drv->config->dma_tx->Instance, ENABLE);
-        }
 
-        spi_drv->dma.TX_DMA_ChInitStr.IntEn = 1U;
-        spi_drv->dma.TX_DMA_ChInitStr.SrcAddr = (uint32_t)pTxData;
+        spi_drv->dma.TX_DMA_ChInitStr.IntEn      = 1U;
+        spi_drv->dma.TX_DMA_ChInitStr.SrcAddr    = (uint32_t)pTxData;
         spi_drv->dma.TX_DMA_ChInitStr.BlkTfrSize = Size;
 
         DMA_ControllerCmd(spi_drv->config->dma_tx->Instance, ENABLE);
-        if (DMA_ChannelInit(spi_drv->config->dma_tx->Instance, &spi_drv->dma.TX_DMA_ChInitStr, spi_drv->config->dma_tx->dma_channel) == 0U)
+        if (DMA_ChannelInit(spi_drv->config->dma_tx->Instance, &spi_drv->dma.TX_DMA_ChInitStr, spi_drv->config->dma_tx->dma_channel) != 0U)
+        {
+            LOG_E("SPI TX DMA channel initialization failed!");
+            // Clean up RX DMA if TX fails
+            DMA_ChannelCmd(spi_drv->config->dma_rx->Instance, spi_drv->config->dma_rx->dma_channel, DISABLE);
+            SPI_I2S_EnableDma(spi_drv->config->SPIx, SPI_I2S_DMA_RX, DISABLE);
+            return -RT_ERROR;
+        }
+        else
         {
             /* Enable transaction complete interrupt event */
             DMA_ChannelEventCmd(spi_drv->config->dma_tx->Instance, spi_drv->config->dma_tx->dma_channel, DMA_CH_EVENT_TRANSFER_COMPLETE, ENABLE);
@@ -155,6 +187,25 @@ static rt_err_t SPI_DMA_TransmitReceive(struct n32_spi *spi_drv, uint8_t *pTxDat
 
             SPI_I2S_EnableDma(spi_drv->config->SPIx, SPI_I2S_DMA_TX, ENABLE);
         }
+#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x)
+        /* SPI TX DMA Send Data for H49X */
+        DMA_EnableChannel(spi_drv->config->dma_tx->DMAChx, DISABLE);
+
+        /* Configure DMA request remapping */
+        DMA_RequestRemap(spi_drv->config->dma_tx->request, spi_drv->config->dma_tx->DMAChx, ENABLE);
+
+        spi_drv->dma.TX_DMA_ChInitStr.MemAddr    = (uint32_t)pTxData;
+        spi_drv->dma.TX_DMA_ChInitStr.BufSize    = Size;
+
+        DMA_Init(spi_drv->config->dma_tx->DMAChx, &spi_drv->dma.TX_DMA_ChInitStr);
+
+        /* Enable transfer complete interrupt */
+        DMA_ConfigInt(spi_drv->config->dma_tx->DMAChx, DMA_INT_TXC, ENABLE);
+
+        /* Enable the specified DMA channel */
+        DMA_EnableChannel(spi_drv->config->dma_tx->DMAChx, ENABLE);
+
+        SPI_I2S_EnableDma(spi_drv->config->SPIx, SPI_I2S_DMA_TX, ENABLE);
 #endif
     }
     else
@@ -175,9 +226,7 @@ static rt_err_t SPI_DMA_TransmitReceive(struct n32_spi *spi_drv, uint8_t *pTxDat
 
     /* Check if the SPI is already enabled */
     if ((spi_drv->config->SPIx->CTRL2 & SPI_CTRL2_SPIEN) != SPI_CTRL2_SPIEN)
-    {
         SPI_Enable(spi_drv->config->SPIx, ENABLE);
-    }
 
     return RT_EOK;
 }
@@ -187,7 +236,7 @@ static rt_err_t SPI_DMA_Transmit(struct n32_spi *spi_drv, uint8_t *pData, uint16
     RT_ASSERT(spi_drv != RT_NULL);
 
     if (spi_drv->SPI_InitStructure.DataDirection == SPI_DIR_SINGLELINE_RX ||
-        spi_drv->SPI_InitStructure.DataDirection == SPI_DIR_SINGLELINE_TX)
+            spi_drv->SPI_InitStructure.DataDirection == SPI_DIR_SINGLELINE_TX)
     {
         /* Disable the sFLASH_SPI  */
         SPI_Enable(spi_drv->config->SPIx, DISABLE);
@@ -201,15 +250,14 @@ static rt_err_t SPI_DMA_Transmit(struct n32_spi *spi_drv, uint8_t *pData, uint16
     if (spi_drv->dma.DMA_Rx_Init == RT_TRUE)
     {
 #if defined(SOC_SERIES_N32H7xx)
+        
         DMA_ChannelCmd(spi_drv->config->dma_rx->Instance, spi_drv->config->dma_rx->dma_channel, DISABLE);
 
         if (!DMA_ControllerIsEnabled(spi_drv->config->dma_rx->Instance))
-        {
             DMA_ControllerCmd(spi_drv->config->dma_rx->Instance, ENABLE);
-        }
 
-        spi_drv->dma.RX_DMA_ChInitStr.IntEn = 0U;
-        spi_drv->dma.RX_DMA_ChInitStr.DstAddr = NULL;
+        spi_drv->dma.RX_DMA_ChInitStr.IntEn      = 0U;
+        spi_drv->dma.RX_DMA_ChInitStr.DstAddr    = NULL;
         spi_drv->dma.RX_DMA_ChInitStr.BlkTfrSize = 0U;
 
         DMA_ControllerCmd(spi_drv->config->dma_rx->Instance, ENABLE);
@@ -218,25 +266,37 @@ static rt_err_t SPI_DMA_Transmit(struct n32_spi *spi_drv, uint8_t *pData, uint16
             LOG_E("Master DMA Rx channel initialization failed.");
             return -RT_ERROR;
         }
+#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x)
+        
+        DMA_EnableChannel(spi_drv->config->dma_rx->DMAChx, DISABLE);
+        spi_drv->dma.RX_DMA_ChInitStr.MemAddr    = 0;
+        spi_drv->dma.RX_DMA_ChInitStr.BufSize    = 0;
+        
+        DMA_EnableChannel(spi_drv->config->dma_rx->DMAChx, ENABLE);
+        DMA_Init(spi_drv->config->dma_rx->DMAChx, &spi_drv->dma.RX_DMA_ChInitStr);
 #endif
     }
 
     if (spi_drv->dma.DMA_Tx_Init == RT_TRUE)
     {
 #if defined(SOC_SERIES_N32H7xx)
+        /* SPI TX DMA Send Data */
         DMA_ChannelCmd(spi_drv->config->dma_tx->Instance, spi_drv->config->dma_tx->dma_channel, DISABLE);
 
         if (!DMA_ControllerIsEnabled(spi_drv->config->dma_tx->Instance))
-        {
             DMA_ControllerCmd(spi_drv->config->dma_tx->Instance, ENABLE);
-        }
 
-        spi_drv->dma.TX_DMA_ChInitStr.IntEn = 1U;
-        spi_drv->dma.TX_DMA_ChInitStr.SrcAddr = (uint32_t)pData;
+        spi_drv->dma.TX_DMA_ChInitStr.IntEn      = 1U;
+        spi_drv->dma.TX_DMA_ChInitStr.SrcAddr    = (uint32_t)pData;
         spi_drv->dma.TX_DMA_ChInitStr.BlkTfrSize = Size;
 
         DMA_ControllerCmd(spi_drv->config->dma_tx->Instance, ENABLE);
-        if (DMA_ChannelInit(spi_drv->config->dma_tx->Instance, &spi_drv->dma.TX_DMA_ChInitStr, spi_drv->config->dma_tx->dma_channel) == 0U)
+        if (DMA_ChannelInit(spi_drv->config->dma_tx->Instance, &spi_drv->dma.TX_DMA_ChInitStr, spi_drv->config->dma_tx->dma_channel) != 0U)
+        {
+            LOG_E("SPI TX DMA channel initialization failed!");
+            return -RT_ERROR;
+        }
+        else
         {
             /* Enable transaction complete interrupt event */
             DMA_ChannelEventCmd(spi_drv->config->dma_tx->Instance, spi_drv->config->dma_tx->dma_channel, DMA_CH_EVENT_TRANSFER_COMPLETE, ENABLE);
@@ -246,6 +306,25 @@ static rt_err_t SPI_DMA_Transmit(struct n32_spi *spi_drv, uint8_t *pData, uint16
 
             SPI_I2S_EnableDma(spi_drv->config->SPIx, SPI_I2S_DMA_TX, ENABLE);
         }
+#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x)
+        /* SPI TX DMA Send Data for H49X */
+        DMA_EnableChannel(spi_drv->config->dma_tx->DMAChx, DISABLE);
+
+        /* Configure DMA request remapping */
+        DMA_RequestRemap(spi_drv->config->dma_tx->request, spi_drv->config->dma_tx->DMAChx, ENABLE);
+
+        spi_drv->dma.TX_DMA_ChInitStr.MemAddr    = (uint32_t)pData;
+        spi_drv->dma.TX_DMA_ChInitStr.BufSize    = Size;
+
+        DMA_Init(spi_drv->config->dma_tx->DMAChx, &spi_drv->dma.TX_DMA_ChInitStr);
+
+        /* Enable transfer complete interrupt */
+        DMA_ConfigInt(spi_drv->config->dma_tx->DMAChx, DMA_INT_TXC, ENABLE);
+
+        /* Enable the specified DMA channel */
+        DMA_EnableChannel(spi_drv->config->dma_tx->DMAChx, ENABLE);
+
+        SPI_I2S_EnableDma(spi_drv->config->SPIx, SPI_I2S_DMA_TX, ENABLE);
 #endif
     }
     else
@@ -259,9 +338,7 @@ static rt_err_t SPI_DMA_Transmit(struct n32_spi *spi_drv, uint8_t *pData, uint16
 
     /* Check if the SPI is already enabled */
     if ((spi_drv->config->SPIx->CTRL2 & SPI_CTRL2_SPIEN) != SPI_CTRL2_SPIEN)
-    {
         SPI_Enable(spi_drv->config->SPIx, ENABLE);
-    }
 
     return RT_EOK;
 }
@@ -276,7 +353,7 @@ static rt_err_t SPI_DMA_Receive(struct n32_spi *spi_drv, uint8_t *pData, uint16_
     }
 
     if (spi_drv->SPI_InitStructure.DataDirection == SPI_DIR_SINGLELINE_RX ||
-        spi_drv->SPI_InitStructure.DataDirection == SPI_DIR_SINGLELINE_TX)
+            spi_drv->SPI_InitStructure.DataDirection == SPI_DIR_SINGLELINE_TX)
     {
         /* Disable the sFLASH_SPI  */
         SPI_Enable(spi_drv->config->SPIx, DISABLE);
@@ -293,16 +370,19 @@ static rt_err_t SPI_DMA_Receive(struct n32_spi *spi_drv, uint8_t *pData, uint16_
         DMA_ChannelCmd(spi_drv->config->dma_rx->Instance, spi_drv->config->dma_rx->dma_channel, DISABLE);
 
         if (!DMA_ControllerIsEnabled(spi_drv->config->dma_rx->Instance))
-        {
             DMA_ControllerCmd(spi_drv->config->dma_rx->Instance, ENABLE);
-        }
 
-        spi_drv->dma.RX_DMA_ChInitStr.IntEn = 1U;
-        spi_drv->dma.RX_DMA_ChInitStr.DstAddr = (uint32_t)pData;
+        spi_drv->dma.RX_DMA_ChInitStr.IntEn      = 1U;
+        spi_drv->dma.RX_DMA_ChInitStr.DstAddr    = (uint32_t)pData;
         spi_drv->dma.RX_DMA_ChInitStr.BlkTfrSize = Size;
 
         DMA_ControllerCmd(spi_drv->config->dma_rx->Instance, ENABLE);
-        if (DMA_ChannelInit(spi_drv->config->dma_rx->Instance, &spi_drv->dma.RX_DMA_ChInitStr, spi_drv->config->dma_rx->dma_channel) == 0U)
+        if (DMA_ChannelInit(spi_drv->config->dma_rx->Instance, &spi_drv->dma.RX_DMA_ChInitStr, spi_drv->config->dma_rx->dma_channel) != 0U)
+        {
+            LOG_E("SPI RX DMA channel initialization failed!");
+            return -RT_ERROR;
+        }
+        else
         {
             /* Enable transaction complete interrupt event */
             DMA_ChannelEventCmd(spi_drv->config->dma_rx->Instance, spi_drv->config->dma_rx->dma_channel, DMA_CH_EVENT_TRANSFER_COMPLETE, ENABLE);
@@ -312,6 +392,25 @@ static rt_err_t SPI_DMA_Receive(struct n32_spi *spi_drv, uint8_t *pData, uint16_
 
             SPI_I2S_EnableDma(spi_drv->config->SPIx, SPI_I2S_DMA_RX, ENABLE);
         }
+#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x)
+        /* SPI RX DMA Receive Data for H49X */
+        DMA_EnableChannel(spi_drv->config->dma_rx->DMAChx, DISABLE);
+
+        /* Configure DMA request remapping */
+        DMA_RequestRemap(spi_drv->config->dma_rx->request, spi_drv->config->dma_rx->DMAChx, ENABLE);
+
+        spi_drv->dma.RX_DMA_ChInitStr.MemAddr    = (uint32_t)pData;
+        spi_drv->dma.RX_DMA_ChInitStr.BufSize    = Size;
+
+        DMA_Init(spi_drv->config->dma_rx->DMAChx, &spi_drv->dma.RX_DMA_ChInitStr);
+
+        /* Enable transfer complete interrupt */
+        DMA_ConfigInt(spi_drv->config->dma_rx->DMAChx, DMA_INT_TXC, ENABLE);
+
+        /* Enable the specified DMA channel */
+        DMA_EnableChannel(spi_drv->config->dma_rx->DMAChx, ENABLE);
+
+        SPI_I2S_EnableDma(spi_drv->config->SPIx, SPI_I2S_DMA_RX, ENABLE);
 #endif
     }
     else
@@ -326,20 +425,31 @@ static rt_err_t SPI_DMA_Receive(struct n32_spi *spi_drv, uint8_t *pData, uint16_
         DMA_ChannelCmd(spi_drv->config->dma_tx->Instance, spi_drv->config->dma_tx->dma_channel, DISABLE);
 
         if (!DMA_ControllerIsEnabled(spi_drv->config->dma_tx->Instance))
-        {
             DMA_ControllerCmd(spi_drv->config->dma_tx->Instance, ENABLE);
-        }
 
-        spi_drv->dma.TX_DMA_ChInitStr.IntEn = 0U;
-        spi_drv->dma.TX_DMA_ChInitStr.SrcAddr = NULL;
+        spi_drv->dma.TX_DMA_ChInitStr.IntEn      = 0U;
+        spi_drv->dma.TX_DMA_ChInitStr.SrcAddr    = NULL;
         spi_drv->dma.TX_DMA_ChInitStr.BlkTfrSize = 0U;
 
         DMA_ControllerCmd(spi_drv->config->dma_tx->Instance, ENABLE);
         if (DMA_ChannelInit(spi_drv->config->dma_tx->Instance, &spi_drv->dma.TX_DMA_ChInitStr, spi_drv->config->dma_tx->dma_channel) != 0U)
         {
             LOG_E("Master DMA Tx channel initialization failed.");
+            // Clean up RX DMA if TX setup fails
+            DMA_ChannelCmd(spi_drv->config->dma_rx->Instance, spi_drv->config->dma_rx->dma_channel, DISABLE);
+            SPI_I2S_EnableDma(spi_drv->config->SPIx, SPI_I2S_DMA_RX, DISABLE);
             return -RT_ERROR;
         }
+#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x)
+        
+        DMA_EnableChannel(spi_drv->config->dma_tx->DMAChx, DISABLE);
+
+        spi_drv->dma.TX_DMA_ChInitStr.MemAddr    = 0;
+        spi_drv->dma.TX_DMA_ChInitStr.BufSize    = 0;
+
+        DMA_EnableChannel(spi_drv->config->dma_tx->DMAChx, ENABLE);
+        DMA_Init(spi_drv->config->dma_tx->DMAChx, &spi_drv->dma.TX_DMA_ChInitStr);
+
 #endif
     }
 
@@ -355,12 +465,12 @@ static rt_err_t SPI_DMA_Receive(struct n32_spi *spi_drv, uint8_t *pData, uint16_
 
     /* Check if the SPI is already enabled */
     if ((spi_drv->config->SPIx->CTRL2 & SPI_CTRL2_SPIEN) != SPI_CTRL2_SPIEN)
-    {
         SPI_Enable(spi_drv->config->SPIx, ENABLE);
-    }
 
     return RT_EOK;
 }
+
+
 
 static rt_err_t SPI_Transmit_Receive(struct n32_spi *spi_drv, uint8_t *pTxData, uint8_t *pRxData, uint16_t Size, uint32_t Timeout)
 {
@@ -377,9 +487,7 @@ static rt_err_t SPI_Transmit_Receive(struct n32_spi *spi_drv, uint8_t *pTxData, 
     }
 
     if ((spi_drv->config->SPIx->CTRL2 & SPI_CTRL2_SPIEN) != SPI_CTRL2_SPIEN)
-    {
         SPI_Enable(spi_drv->config->SPIx, ENABLE);
-    }
 
     if (spi_drv->SPI_InitStructure.DataLen == SPI_DATA_SIZE_16BITS)
     {
@@ -398,7 +506,7 @@ static rt_err_t SPI_Transmit_Receive(struct n32_spi *spi_drv, uint8_t *pTxData, 
                 /*  Loop while DAT register in not emplty */
                 while (SPI_I2S_GetStatus(spi_drv->config->SPIx, SPI_I2S_TE_FLAG) == RESET)
                 {
-                    if ((((rt_tick_get() - tickstart) >= Timeout) && (Timeout != 0xFFFFFFFFU)) || (Timeout == 0U))
+                    if ((((rt_tick_get() - tickstart) >=  Timeout) && (Timeout != 0xFFFFFFFFU)) || (Timeout == 0U))
                     {
                         LOG_E("Checking TE flag timeout befor send data in full-duplex mode.");
                         return -RT_ETIMEOUT;
@@ -416,7 +524,7 @@ static rt_err_t SPI_Transmit_Receive(struct n32_spi *spi_drv, uint8_t *pTxData, 
             /* Wait for DATA send has complete */
             while (SPI_I2S_GetStatus(spi_drv->config->SPIx, SPI_I2S_TE_FLAG) == RESET)
             {
-                if ((((rt_tick_get() - tickstart) >= Timeout) && (Timeout != 0xFFFFFFFFU)) || (Timeout == 0U))
+                if ((((rt_tick_get() - tickstart) >=  Timeout) && (Timeout != 0xFFFFFFFFU)) || (Timeout == 0U))
                 {
                     LOG_E("Checking TE flag timeout after send data in full-duplex mode.");
                     return -RT_ETIMEOUT;
@@ -427,7 +535,7 @@ static rt_err_t SPI_Transmit_Receive(struct n32_spi *spi_drv, uint8_t *pTxData, 
             /* Wait for SPI bus idle */
             while (SPI_I2S_GetStatus(spi_drv->config->SPIx, SPI_I2S_BUSY_FLAG) != RESET)
             {
-                if ((((rt_tick_get() - tickstart) >= Timeout) && (Timeout != 0xFFFFFFFFU)) || (Timeout == 0U))
+                if ((((rt_tick_get() - tickstart) >=  Timeout) && (Timeout != 0xFFFFFFFFU)) || (Timeout == 0U))
                 {
                     LOG_E("Checking BUSY flag timeout in full-duplex mode.");
                     return -RT_ETIMEOUT;
@@ -438,7 +546,7 @@ static rt_err_t SPI_Transmit_Receive(struct n32_spi *spi_drv, uint8_t *pTxData, 
             /* Wait to receive a byte */
             while (SPI_I2S_GetStatus(spi_drv->config->SPIx, SPI_I2S_RNE_FLAG) == RESET)
             {
-                if ((((rt_tick_get() - tickstart) >= Timeout) && (Timeout != 0xFFFFFFFFU)) || (Timeout == 0U))
+                if ((((rt_tick_get() - tickstart) >=  Timeout) && (Timeout != 0xFFFFFFFFU)) || (Timeout == 0U))
                 {
                     LOG_E("Checking RNE flag timeout after send data in full-duplex mode.");
                     return -RT_ETIMEOUT;
@@ -469,7 +577,7 @@ static rt_err_t SPI_Transmit_Receive(struct n32_spi *spi_drv, uint8_t *pTxData, 
                 /*  Loop while DAT register in not emplty */
                 while (SPI_I2S_GetStatus(spi_drv->config->SPIx, SPI_I2S_TE_FLAG) == RESET)
                 {
-                    if ((((rt_tick_get() - tickstart) >= Timeout) && (Timeout != 0xFFFFFFFFU)) || (Timeout == 0U))
+                    if ((((rt_tick_get() - tickstart) >=  Timeout) && (Timeout != 0xFFFFFFFFU)) || (Timeout == 0U))
                     {
                         LOG_E("Checking TE flag timeout befor send data in full-duplex mode.");
                         return -RT_ETIMEOUT;
@@ -487,7 +595,7 @@ static rt_err_t SPI_Transmit_Receive(struct n32_spi *spi_drv, uint8_t *pTxData, 
             /* Wait for DATA send has complete */
             while (SPI_I2S_GetStatus(spi_drv->config->SPIx, SPI_I2S_TE_FLAG) == RESET)
             {
-                if ((((rt_tick_get() - tickstart) >= Timeout) && (Timeout != 0xFFFFFFFFU)) || (Timeout == 0U))
+                if ((((rt_tick_get() - tickstart) >=  Timeout) && (Timeout != 0xFFFFFFFFU)) || (Timeout == 0U))
                 {
                     LOG_E("Checking TE flag timeout after send data in full-duplex mode.");
                     return -RT_ETIMEOUT;
@@ -498,7 +606,7 @@ static rt_err_t SPI_Transmit_Receive(struct n32_spi *spi_drv, uint8_t *pTxData, 
             /* Wait for SPI bus idle */
             while (SPI_I2S_GetStatus(spi_drv->config->SPIx, SPI_I2S_BUSY_FLAG) != RESET)
             {
-                if ((((rt_tick_get() - tickstart) >= Timeout) && (Timeout != 0xFFFFFFFFU)) || (Timeout == 0U))
+                if ((((rt_tick_get() - tickstart) >=  Timeout) && (Timeout != 0xFFFFFFFFU)) || (Timeout == 0U))
                 {
                     LOG_E("Checking BUSY flag timeout in full-duplex mode.");
                     return -RT_ETIMEOUT;
@@ -509,7 +617,7 @@ static rt_err_t SPI_Transmit_Receive(struct n32_spi *spi_drv, uint8_t *pTxData, 
             /* Wait to receive a byte */
             while (SPI_I2S_GetStatus(spi_drv->config->SPIx, SPI_I2S_RNE_FLAG) == RESET)
             {
-                if ((((rt_tick_get() - tickstart) >= Timeout) && (Timeout != 0xFFFFFFFFU)) || (Timeout == 0U))
+                if ((((rt_tick_get() - tickstart) >=  Timeout) && (Timeout != 0xFFFFFFFFU)) || (Timeout == 0U))
                 {
                     LOG_E("Checking RNE flag timeout after send data in full-duplex mode.");
                     return -RT_ETIMEOUT;
@@ -548,7 +656,7 @@ static rt_err_t SPI_Transmit(struct n32_spi *spi_drv, uint8_t *pData, uint16_t S
     RT_ASSERT(spi_drv != RT_NULL);
 
     if (spi_drv->SPI_InitStructure.DataDirection == SPI_DIR_SINGLELINE_RX ||
-        spi_drv->SPI_InitStructure.DataDirection == SPI_DIR_SINGLELINE_TX)
+            spi_drv->SPI_InitStructure.DataDirection == SPI_DIR_SINGLELINE_TX)
     {
         /* Disable the sFLASH_SPI  */
         SPI_Enable(spi_drv->config->SPIx, DISABLE);
@@ -560,9 +668,7 @@ static rt_err_t SPI_Transmit(struct n32_spi *spi_drv, uint8_t *pData, uint16_t S
     }
 
     if ((spi_drv->config->SPIx->CTRL2 & SPI_CTRL2_SPIEN) != SPI_CTRL2_SPIEN)
-    {
         SPI_Enable(spi_drv->config->SPIx, ENABLE);
-    }
 
 
     if (spi_drv->SPI_InitStructure.DataLen == SPI_DATA_SIZE_16BITS)
@@ -580,7 +686,7 @@ static rt_err_t SPI_Transmit(struct n32_spi *spi_drv, uint8_t *pData, uint16_t S
             /*  Loop while DAT register in not emplty */
             while (SPI_I2S_GetStatus(spi_drv->config->SPIx, SPI_I2S_TE_FLAG) == RESET)
             {
-                if ((((rt_tick_get() - tickstart) >= Timeout) && (Timeout != 0xFFFFFFFFU)) || (Timeout == 0U))
+                if ((((rt_tick_get() - tickstart) >=  Timeout) && (Timeout != 0xFFFFFFFFU)) || (Timeout == 0U))
                 {
                     LOG_E("Checking TE flag timeout.");
                     return -RT_ETIMEOUT;
@@ -610,7 +716,7 @@ static rt_err_t SPI_Transmit(struct n32_spi *spi_drv, uint8_t *pData, uint16_t S
             /*  Loop while DAT register in not emplty */
             while (SPI_I2S_GetStatus(spi_drv->config->SPIx, SPI_I2S_TE_FLAG) == RESET)
             {
-                if ((((rt_tick_get() - tickstart) >= Timeout) && (Timeout != 0xFFFFFFFFU)) || (Timeout == 0U))
+                if ((((rt_tick_get() - tickstart) >=  Timeout) && (Timeout != 0xFFFFFFFFU)) || (Timeout == 0U))
                 {
                     LOG_E("Checking TE flag timeout.");
                     return -RT_ETIMEOUT;
@@ -627,13 +733,14 @@ static rt_err_t SPI_Transmit(struct n32_spi *spi_drv, uint8_t *pData, uint16_t S
     }
     else
     {
+
     }
 
     tickstart = rt_tick_get();
     /* Wait for DATA send has complete */
     while (SPI_I2S_GetStatus(spi_drv->config->SPIx, SPI_I2S_TE_FLAG) == RESET)
     {
-        if ((((rt_tick_get() - tickstart) >= Timeout) && (Timeout != 0xFFFFFFFFU)) || (Timeout == 0U))
+        if ((((rt_tick_get() - tickstart) >=  Timeout) && (Timeout != 0xFFFFFFFFU)) || (Timeout == 0U))
         {
             LOG_E("After sending the data, check the TE flag for timeout.");
             return -RT_ETIMEOUT;
@@ -644,7 +751,7 @@ static rt_err_t SPI_Transmit(struct n32_spi *spi_drv, uint8_t *pData, uint16_t S
     /* Wait for SPI bus idle */
     while (SPI_I2S_GetStatus(spi_drv->config->SPIx, SPI_I2S_BUSY_FLAG) != RESET)
     {
-        if ((((rt_tick_get() - tickstart) >= Timeout) && (Timeout != 0xFFFFFFFFU)) || (Timeout == 0U))
+        if ((((rt_tick_get() - tickstart) >=  Timeout) && (Timeout != 0xFFFFFFFFU)) || (Timeout == 0U))
         {
             LOG_E("After sending the data, check the BUSY flag for timeout.");
             return -RT_ETIMEOUT;
@@ -663,7 +770,7 @@ static rt_err_t SPI_Transmit(struct n32_spi *spi_drv, uint8_t *pData, uint16_t S
 }
 
 
-static rt_err_t SP_Receive(struct n32_spi *spi_drv, uint8_t *pData, uint16_t Size, uint32_t Timeout)
+static rt_err_t SPI_Receive(struct n32_spi *spi_drv, uint8_t *pData, uint16_t Size, uint32_t Timeout)
 {
     uint16_t Transfer_Size = Size;
     uint32_t tickstart;
@@ -678,7 +785,7 @@ static rt_err_t SP_Receive(struct n32_spi *spi_drv, uint8_t *pData, uint16_t Siz
         reg_tmp = spi_drv->config->SPIx->STS;
         (void)reg_tmp;
 
-        if ((((rt_tick_get() - tickstart) >= Timeout) && (Timeout != 0xFFFFFFFFU)) || (Timeout == 0U))
+        if ((((rt_tick_get() - tickstart) >=  Timeout) && (Timeout != 0xFFFFFFFFU)) || (Timeout == 0U))
         {
             LOG_E("Before receiving data, check the OVER and RNE flags for timeout.");
             return -RT_ETIMEOUT;
@@ -691,7 +798,7 @@ static rt_err_t SP_Receive(struct n32_spi *spi_drv, uint8_t *pData, uint16_t Siz
     }
 
     if (spi_drv->SPI_InitStructure.DataDirection == SPI_DIR_SINGLELINE_RX ||
-        spi_drv->SPI_InitStructure.DataDirection == SPI_DIR_SINGLELINE_TX)
+            spi_drv->SPI_InitStructure.DataDirection == SPI_DIR_SINGLELINE_TX)
     {
         /* Disable the sFLASH_SPI  */
         SPI_Enable(spi_drv->config->SPIx, DISABLE);
@@ -703,9 +810,7 @@ static rt_err_t SP_Receive(struct n32_spi *spi_drv, uint8_t *pData, uint16_t Siz
     }
 
     if ((spi_drv->config->SPIx->CTRL2 & SPI_CTRL2_SPIEN) != SPI_CTRL2_SPIEN)
-    {
         SPI_Enable(spi_drv->config->SPIx, ENABLE);
-    }
 
     if (spi_drv->SPI_InitStructure.DataLen == SPI_DATA_SIZE_16BITS)
     {
@@ -715,7 +820,7 @@ static rt_err_t SP_Receive(struct n32_spi *spi_drv, uint8_t *pData, uint16_t Siz
             /* Wait to receive a byte */
             while (SPI_I2S_GetStatus(spi_drv->config->SPIx, SPI_I2S_RNE_FLAG) == RESET)
             {
-                if ((((rt_tick_get() - tickstart) >= Timeout) && (Timeout != 0xFFFFFFFFU)) || (Timeout == 0U))
+                if ((((rt_tick_get() - tickstart) >=  Timeout) && (Timeout != 0xFFFFFFFFU)) || (Timeout == 0U))
                 {
                     LOG_E("During receiving data, check the RNE flags for timeout.");
                     return -RT_ETIMEOUT;
@@ -737,7 +842,7 @@ static rt_err_t SP_Receive(struct n32_spi *spi_drv, uint8_t *pData, uint16_t Siz
             /* Wait to receive a byte */
             while (SPI_I2S_GetStatus(spi_drv->config->SPIx, SPI_I2S_RNE_FLAG) == RESET)
             {
-                if ((((rt_tick_get() - tickstart) >= Timeout) && (Timeout != 0xFFFFFFFFU)) || (Timeout == 0U))
+                if ((((rt_tick_get() - tickstart) >=  Timeout) && (Timeout != 0xFFFFFFFFU)) || (Timeout == 0U))
                 {
                     LOG_E("During receiving data, check the RNE flags for timeout.");
                     return -RT_ETIMEOUT;
@@ -753,11 +858,12 @@ static rt_err_t SP_Receive(struct n32_spi *spi_drv, uint8_t *pData, uint16_t Siz
     }
     else
     {
+
     }
 
     if ((spi_drv->SPI_InitStructure.DataDirection == SPI_DIR_DOUBLELINE_RONLY ||
-         spi_drv->SPI_InitStructure.DataDirection == SPI_DIR_SINGLELINE_RX) &&
-        spi_drv->SPI_InitStructure.SpiMode == SPI_MODE_MASTER)
+            spi_drv->SPI_InitStructure.DataDirection == SPI_DIR_SINGLELINE_RX)   &&
+            spi_drv->SPI_InitStructure.SpiMode       == SPI_MODE_MASTER)
     {
         /* Disable the sFLASH_SPI  */
         SPI_Enable(spi_drv->config->SPIx, DISABLE);
@@ -767,10 +873,9 @@ static rt_err_t SP_Receive(struct n32_spi *spi_drv, uint8_t *pData, uint16_t Siz
     /* Wait to receive a byte */
     while (SPI_I2S_GetStatus(spi_drv->config->SPIx, SPI_I2S_RNE_FLAG) == RESET)
     {
-        volatile rt_uint32_t dummy = spi_drv->config->SPIx->DAT;
-        (void)dummy;
+        spi_drv->config->SPIx->DAT;
 
-        if ((((rt_tick_get() - tickstart) >= Timeout) && (Timeout != 0xFFFFFFFFU)) || (Timeout == 0U))
+        if ((((rt_tick_get() - tickstart) >=  Timeout) && (Timeout != 0xFFFFFFFFU)) || (Timeout == 0U))
         {
             LOG_E("After receiving data, check the RNE flags for timeout.");
             return -RT_ETIMEOUT;
@@ -781,7 +886,7 @@ static rt_err_t SP_Receive(struct n32_spi *spi_drv, uint8_t *pData, uint16_t Siz
     /* Wait for SPI bus idle */
     while (SPI_I2S_GetStatus(spi_drv->config->SPIx, SPI_I2S_BUSY_FLAG) != RESET)
     {
-        if ((((rt_tick_get() - tickstart) >= Timeout) && (Timeout != 0xFFFFFFFFU)) || (Timeout == 0U))
+        if ((((rt_tick_get() - tickstart) >=  Timeout) && (Timeout != 0xFFFFFFFFU)) || (Timeout == 0U))
         {
             LOG_E("After receiving data, check the BUSY flags for timeout.");
             return -RT_ETIMEOUT;
@@ -828,11 +933,11 @@ static rt_err_t n32_spi_init(struct n32_spi *spi_drv, struct rt_spi_configuratio
 
     if (cfg->data_width == 8)
     {
-        spi_drv->SPI_InitStructure.DataLen = SPI_DATA_SIZE_8BITS;
+        spi_drv->SPI_InitStructure.DataLen       = SPI_DATA_SIZE_8BITS;
     }
     else if (cfg->data_width == 16)
     {
-        spi_drv->SPI_InitStructure.DataLen = SPI_DATA_SIZE_16BITS;
+        spi_drv->SPI_InitStructure.DataLen       = SPI_DATA_SIZE_16BITS;
     }
     else
     {
@@ -841,28 +946,29 @@ static rt_err_t n32_spi_init(struct n32_spi *spi_drv, struct rt_spi_configuratio
 
     if (cfg->mode & RT_SPI_CPHA)
     {
-        spi_drv->SPI_InitStructure.CLKPHA = SPI_CLKPHA_SECOND_EDGE;
+        spi_drv->SPI_InitStructure.CLKPHA        = SPI_CLKPHA_SECOND_EDGE;
     }
     else
     {
-        spi_drv->SPI_InitStructure.CLKPHA = SPI_CLKPHA_FIRST_EDGE;
+        spi_drv->SPI_InitStructure.CLKPHA        = SPI_CLKPHA_FIRST_EDGE;
     }
 
     if (cfg->mode & RT_SPI_CPOL)
     {
-        spi_drv->SPI_InitStructure.CLKPOL = SPI_CLKPOL_HIGH;
+        spi_drv->SPI_InitStructure.CLKPOL        = SPI_CLKPOL_HIGH;
     }
     else
     {
-        spi_drv->SPI_InitStructure.CLKPOL = SPI_CLKPOL_LOW;
+        spi_drv->SPI_InitStructure.CLKPOL        = SPI_CLKPOL_LOW;
     }
 
-    spi_drv->SPI_InitStructure.NSS = SPI_NSS_SOFT;
-    spi_drv->SPI_InitStructure.CRCPoly = 7;
+    spi_drv->SPI_InitStructure.NSS               = SPI_NSS_SOFT;
+    spi_drv->SPI_InitStructure.CRCPoly           = 7;
 
     uint32_t SPI_CLOCK = 0UL;
 
 #if defined(SOC_SERIES_N32H7xx)
+
     RCC_ClocksTypeDef RCC_Clocks = { 0 };
 
     RCC_GetClocksFreqValue(&RCC_Clocks);
@@ -883,49 +989,63 @@ static rt_err_t n32_spi_init(struct n32_spi *spi_drv, struct rt_spi_configuratio
     {
         return -RT_EIO;
     }
+#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x)
+
+    RCC_ClocksType RCC_ClockFreq = { 0 };
+
+    RCC_GetClocksFreqValue(&RCC_ClockFreq);
+
+    if ((spi_drv->config->SPIx == SPI1)||(spi_drv->config->SPIx == SPI4)||(spi_drv->config->SPIx == SPI5)||(spi_drv->config->SPIx == SPI6))
+    {
+        SPI_CLOCK = RCC_ClockFreq.Pclk2Freq;
+
+    }else if ((spi_drv->config->SPIx == SPI2)||(spi_drv->config->SPIx == SPI3))
+    {
+        SPI_CLOCK = RCC_ClockFreq.Pclk1Freq;
+    }
 #endif
 
     if (cfg->max_hz >= SPI_CLOCK / 2)
     {
-        spi_drv->SPI_InitStructure.BaudRatePres = SPI_BR_PRESCALER_2;
+        spi_drv->SPI_InitStructure.BaudRatePres  = SPI_BR_PRESCALER_2;
     }
     else if (cfg->max_hz >= SPI_CLOCK / 4)
     {
-        spi_drv->SPI_InitStructure.BaudRatePres = SPI_BR_PRESCALER_4;
+        spi_drv->SPI_InitStructure.BaudRatePres  = SPI_BR_PRESCALER_4;
     }
     else if (cfg->max_hz >= SPI_CLOCK / 8)
     {
-        spi_drv->SPI_InitStructure.BaudRatePres = SPI_BR_PRESCALER_8;
+        spi_drv->SPI_InitStructure.BaudRatePres  = SPI_BR_PRESCALER_8;
     }
     else if (cfg->max_hz >= SPI_CLOCK / 16)
     {
-        spi_drv->SPI_InitStructure.BaudRatePres = SPI_BR_PRESCALER_16;
+        spi_drv->SPI_InitStructure.BaudRatePres  = SPI_BR_PRESCALER_16;
     }
     else if (cfg->max_hz >= SPI_CLOCK / 32)
     {
-        spi_drv->SPI_InitStructure.BaudRatePres = SPI_BR_PRESCALER_32;
+        spi_drv->SPI_InitStructure.BaudRatePres  = SPI_BR_PRESCALER_32;
     }
     else if (cfg->max_hz >= SPI_CLOCK / 64)
     {
-        spi_drv->SPI_InitStructure.BaudRatePres = SPI_BR_PRESCALER_64;
+        spi_drv->SPI_InitStructure.BaudRatePres  = SPI_BR_PRESCALER_64;
     }
     else if (cfg->max_hz >= SPI_CLOCK / 128)
     {
-        spi_drv->SPI_InitStructure.BaudRatePres = SPI_BR_PRESCALER_128;
+        spi_drv->SPI_InitStructure.BaudRatePres  = SPI_BR_PRESCALER_128;
     }
     else
     {
         /*  min prescaler 256 */
-        spi_drv->SPI_InitStructure.BaudRatePres = SPI_BR_PRESCALER_256;
+        spi_drv->SPI_InitStructure.BaudRatePres  = SPI_BR_PRESCALER_256;
     }
 
     if (cfg->mode & RT_SPI_MSB)
     {
-        spi_drv->SPI_InitStructure.FirstBit = SPI_FB_MSB;
+        spi_drv->SPI_InitStructure.FirstBit      = SPI_FB_MSB;
     }
     else
     {
-        spi_drv->SPI_InitStructure.FirstBit = SPI_FB_LSB;
+        spi_drv->SPI_InitStructure.FirstBit      = SPI_FB_LSB;
     }
 
     /* Initializes the SPIx peripheral */
@@ -939,6 +1059,9 @@ static rt_err_t n32_spi_init(struct n32_spi *spi_drv, struct rt_spi_configuratio
 #if defined(SOC_SERIES_N32H7xx)
             spi_drv->dma.RX_DMA_ChInitStr.SrcTfrWidth = DMA_CH_TRANSFER_WIDTH_8;
             spi_drv->dma.RX_DMA_ChInitStr.DstTfrWidth = DMA_CH_TRANSFER_WIDTH_8;
+#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x)
+            spi_drv->dma.RX_DMA_ChInitStr.PeriphDataSize     = DMA_PERIPH_DATA_WIDTH_BYTE;
+            spi_drv->dma.RX_DMA_ChInitStr.MemDataSize        = DMA_MEM_DATA_WIDTH_BYTE;
 #endif
         }
         else if (cfg->data_width == 16)
@@ -946,6 +1069,9 @@ static rt_err_t n32_spi_init(struct n32_spi *spi_drv, struct rt_spi_configuratio
 #if defined(SOC_SERIES_N32H7xx)
             spi_drv->dma.RX_DMA_ChInitStr.SrcTfrWidth = DMA_CH_TRANSFER_WIDTH_16;
             spi_drv->dma.RX_DMA_ChInitStr.DstTfrWidth = DMA_CH_TRANSFER_WIDTH_16;
+#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x)
+            spi_drv->dma.RX_DMA_ChInitStr.PeriphDataSize     = DMA_PERIPH_DATA_WIDTH_HALFWORD;
+            spi_drv->dma.RX_DMA_ChInitStr.MemDataSize        = DMA_MEM_DATA_WIDTH_HALFWORD;
 #endif
         }
 
@@ -961,6 +1087,9 @@ static rt_err_t n32_spi_init(struct n32_spi *spi_drv, struct rt_spi_configuratio
 #if defined(SOC_SERIES_N32H7xx)
             spi_drv->dma.TX_DMA_ChInitStr.SrcTfrWidth = DMA_CH_TRANSFER_WIDTH_8;
             spi_drv->dma.TX_DMA_ChInitStr.DstTfrWidth = DMA_CH_TRANSFER_WIDTH_8;
+#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x)
+            spi_drv->dma.TX_DMA_ChInitStr.PeriphDataSize     = DMA_PERIPH_DATA_WIDTH_BYTE;
+            spi_drv->dma.TX_DMA_ChInitStr.MemDataSize        = DMA_MEM_DATA_WIDTH_BYTE;
 #endif
         }
         else if (cfg->data_width == 16)
@@ -968,6 +1097,9 @@ static rt_err_t n32_spi_init(struct n32_spi *spi_drv, struct rt_spi_configuratio
 #if defined(SOC_SERIES_N32H7xx)
             spi_drv->dma.TX_DMA_ChInitStr.SrcTfrWidth = DMA_CH_TRANSFER_WIDTH_16;
             spi_drv->dma.TX_DMA_ChInitStr.DstTfrWidth = DMA_CH_TRANSFER_WIDTH_16;
+#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x)
+            spi_drv->dma.TX_DMA_ChInitStr.PeriphDataSize     = DMA_PERIPH_DATA_WIDTH_HALFWORD;
+            spi_drv->dma.TX_DMA_ChInitStr.MemDataSize        = DMA_MEM_DATA_WIDTH_HALFWORD;            
 #endif
         }
 
@@ -978,7 +1110,7 @@ static rt_err_t n32_spi_init(struct n32_spi *spi_drv, struct rt_spi_configuratio
 
     if (spi_drv->spi_dma_flag & SPI_USING_TX_DMA_FLAG || spi_drv->spi_dma_flag & SPI_USING_RX_DMA_FLAG)
     {
-        /* enable dma irq */
+        /* enable spi irq */
         NVIC_SetPriority(spi_drv->config->irq_type, NVIC_EncodePriority(NVIC_GetPriorityGrouping(), 2, 0));
         NVIC_EnableIRQ(spi_drv->config->irq_type);
     }
@@ -994,7 +1126,7 @@ static rt_err_t spi_configure(struct rt_spi_device *device,
     RT_ASSERT(device != RT_NULL);
     RT_ASSERT(configuration != RT_NULL);
 
-    struct n32_spi *spi_drv = rt_container_of(device->bus, struct n32_spi, spi_bus);
+    struct n32_spi *spi_drv =  rt_container_of(device->bus, struct n32_spi, spi_bus);
     spi_drv->cfg = configuration;
 
     return n32_spi_init(spi_drv, configuration);
@@ -1003,12 +1135,13 @@ static rt_err_t spi_configure(struct rt_spi_device *device,
 
 static rt_ssize_t spixfer(struct rt_spi_device *device, struct rt_spi_message *message)
 {
-#define DMA_TRANS_MIN_LEN 10 /* only buffer length >= DMA_TRANS_MIN_LEN will use DMA mode */
+    
+#define DMA_TRANS_MIN_LEN  10 /* only buffer length >= DMA_TRANS_MIN_LEN will use DMA mode */
 
     rt_err_t state = RT_EOK;
     uint32_t tickstart;
     rt_size_t message_length, already_send_length;
-    rt_uint16_t send_length;
+    rt_uint16_t send_length = 0;
     rt_uint8_t *recv_buf;
     const rt_uint8_t *send_buf;
 
@@ -1016,7 +1149,7 @@ static rt_ssize_t spixfer(struct rt_spi_device *device, struct rt_spi_message *m
     RT_ASSERT(device->bus != RT_NULL);
     RT_ASSERT(message != RT_NULL);
 
-    struct n32_spi *spi_drv = rt_container_of(device->bus, struct n32_spi, spi_bus);
+    struct n32_spi *spi_drv =  rt_container_of(device->bus, struct n32_spi, spi_bus);
 
     if (message->cs_take && !(device->config.mode & RT_SPI_NO_CS) && (device->cs_pin != PIN_NONE))
     {
@@ -1042,7 +1175,7 @@ static rt_ssize_t spixfer(struct rt_spi_device *device, struct rt_spi_message *m
 
     while (message_length)
     {
-#if defined(SOC_SERIES_N32H7xx)
+
         /* DMA uses a single block, with a maximum of 4095 per block */
         if (message_length > 4095)
         {
@@ -1054,7 +1187,6 @@ static rt_ssize_t spixfer(struct rt_spi_device *device, struct rt_spi_message *m
             send_length = message_length;
             message_length = 0;
         }
-#endif
 
         /* calculate the start address */
         already_send_length = message->length - send_length - message_length;
@@ -1063,6 +1195,7 @@ static rt_ssize_t spixfer(struct rt_spi_device *device, struct rt_spi_message *m
         {
             send_buf = (rt_uint8_t *)message->send_buf + already_send_length;
         }
+        
         if (message->recv_buf)
         {
             recv_buf = (rt_uint8_t *)message->recv_buf + already_send_length;
@@ -1085,11 +1218,8 @@ static rt_ssize_t spixfer(struct rt_spi_device *device, struct rt_spi_message *m
                 rt_memcpy(dma_aligned_buffer, send_buf, send_length);
                 p_txrx_buffer = dma_aligned_buffer;
             }
-            if ((SCB->CCR & (uint32_t)SCB_CCR_DC_Msk) != 0U)
-            {
-                rt_hw_cpu_dcache_ops(RT_HW_CACHE_FLUSH, dma_aligned_buffer, send_length);
-            }
-#else
+            rt_hw_cpu_dcache_ops(RT_HW_CACHE_FLUSH, dma_aligned_buffer, send_length);
+#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x)
             if (RT_IS_ALIGN((rt_uint32_t)send_buf, 4) && send_buf != RT_NULL) /* aligned with 4 bytes? */
             {
                 p_txrx_buffer = (rt_uint32_t *)send_buf; /* send_buf aligns with 4 bytes, no more operations */
@@ -1109,8 +1239,7 @@ static rt_ssize_t spixfer(struct rt_spi_device *device, struct rt_spi_message *m
         while (SPI_I2S_GetStatus(spi_drv->config->SPIx, SPI_I2S_RNE_FLAG) != RESET)
         {
             /*clear RX buff*/
-            volatile rt_uint32_t dummy = spi_drv->config->SPIx->DAT;
-            (void)dummy;
+            spi_drv->config->SPIx->DAT;
 
             if ((rt_tick_get() - tickstart) > 1000U)
             {
@@ -1125,8 +1254,7 @@ static rt_ssize_t spixfer(struct rt_spi_device *device, struct rt_spi_message *m
         while (SPI_I2S_GetStatus(spi_drv->config->SPIx, SPI_I2S_OVER_FLAG) != RESET)
         {
             /*clear RX buff*/
-            volatile rt_uint32_t dummy = spi_drv->config->SPIx->DAT;
-            (void)dummy;
+            spi_drv->config->SPIx->DAT;
             SPI_I2S_GetStatus(spi_drv->config->SPIx, SPI_I2S_OVER_FLAG);
 
             if ((rt_tick_get() - tickstart) > 1000U)
@@ -1191,7 +1319,7 @@ static rt_ssize_t spixfer(struct rt_spi_device *device, struct rt_spi_message *m
                 tmpreg = spi_drv->config->SPIx->STS;
                 (void)tmpreg;
 
-                state = SP_Receive(spi_drv, (uint8_t *)recv_buf, send_length, 1000);
+                state = SPI_Receive(spi_drv, (uint8_t *)recv_buf, send_length, 1000);
             }
         }
         else
@@ -1241,10 +1369,7 @@ static rt_ssize_t spixfer(struct rt_spi_device *device, struct rt_spi_message *m
             if (recv_buf != RT_NULL)
             {
 #if defined(SOC_SERIES_N32H7xx)
-                if ((SCB->CCR & (uint32_t)SCB_CCR_DC_Msk) != 0U)
-                {
-                    rt_hw_cpu_dcache_ops(RT_HW_CACHE_INVALIDATE, p_txrx_buffer, send_length);
-                }
+                rt_hw_cpu_dcache_ops(RT_HW_CACHE_INVALIDATE, p_txrx_buffer, send_length);
 #endif /* SOC_SERIES_N32H7xx */
                 rt_memcpy(recv_buf, p_txrx_buffer, send_length);
             }
@@ -1259,13 +1384,9 @@ static rt_ssize_t spixfer(struct rt_spi_device *device, struct rt_spi_message *m
     if (message->cs_release && !(device->config.mode & RT_SPI_NO_CS) && (device->cs_pin != PIN_NONE))
     {
         if (device->config.mode & RT_SPI_CS_HIGH)
-        {
             rt_pin_write(device->cs_pin, PIN_LOW);
-        }
         else
-        {
             rt_pin_write(device->cs_pin, PIN_HIGH);
-        }
     }
 
     if (state != RT_EOK)
@@ -1275,10 +1396,12 @@ static rt_ssize_t spixfer(struct rt_spi_device *device, struct rt_spi_message *m
     return message->length;
 }
 
-static const struct rt_spi_ops n32_spi_ops = {
+static const struct rt_spi_ops n32_spi_ops =
+{
     .configure = spi_configure,
     .xfer = spixfer,
 };
+
 
 
 static int rt_hw_spi_bus_init(void)
@@ -1302,29 +1425,29 @@ static int rt_hw_spi_bus_init(void)
 
             /* Receive DMA Config */
             DMA_ChannelStructInit(&spi_bus_obj[i].dma.RX_DMA_ChInitStr);
-            spi_bus_obj[i].dma.RX_DMA_ChInitStr.IntEn = 0x1U;
-            spi_bus_obj[i].dma.RX_DMA_ChInitStr.SrcAddr = (uint32_t)&spi_bus_obj[i].config->SPIx->DAT;
-            spi_bus_obj[i].dma.RX_DMA_ChInitStr.DstAddr = NULL;
-            spi_bus_obj[i].dma.RX_DMA_ChInitStr.SrcTfrWidth = DMA_CH_TRANSFER_WIDTH_8;
-            spi_bus_obj[i].dma.RX_DMA_ChInitStr.DstTfrWidth = DMA_CH_TRANSFER_WIDTH_8;
-            spi_bus_obj[i].dma.RX_DMA_ChInitStr.DstAddrCountMode = DMA_CH_ADDRESS_COUNT_MODE_INCREMENT;
-            spi_bus_obj[i].dma.RX_DMA_ChInitStr.SrcAddrCountMode = DMA_CH_ADDRESS_COUNT_MODE_NO_CHANGE;
-            spi_bus_obj[i].dma.RX_DMA_ChInitStr.DstBurstLen = DMA_CH_BURST_LENGTH_1;
-            spi_bus_obj[i].dma.RX_DMA_ChInitStr.SrcBurstLen = DMA_CH_BURST_LENGTH_1;
-            spi_bus_obj[i].dma.RX_DMA_ChInitStr.SrcGatherEn = 0x0U;
-            spi_bus_obj[i].dma.RX_DMA_ChInitStr.DstScatterEn = 0x0U;
-            spi_bus_obj[i].dma.RX_DMA_ChInitStr.TfrTypeFlowCtrl = DMA_CH_TRANSFER_FLOW_P2M_DMA;
-            spi_bus_obj[i].dma.RX_DMA_ChInitStr.BlkTfrSize = 0U;
-            spi_bus_obj[i].dma.RX_DMA_ChInitStr.pLinkListItem = NULL;
-            spi_bus_obj[i].dma.RX_DMA_ChInitStr.SrcGatherInterval = 0x0U;
-            spi_bus_obj[i].dma.RX_DMA_ChInitStr.SrcGatherCount = 0x0U;
+            spi_bus_obj[i].dma.RX_DMA_ChInitStr.IntEn              = 0x1U;
+            spi_bus_obj[i].dma.RX_DMA_ChInitStr.SrcAddr            = (uint32_t)&spi_bus_obj[i].config->SPIx->DAT;
+            spi_bus_obj[i].dma.RX_DMA_ChInitStr.DstAddr            = NULL;
+            spi_bus_obj[i].dma.RX_DMA_ChInitStr.SrcTfrWidth        = DMA_CH_TRANSFER_WIDTH_8;
+            spi_bus_obj[i].dma.RX_DMA_ChInitStr.DstTfrWidth        = DMA_CH_TRANSFER_WIDTH_8;
+            spi_bus_obj[i].dma.RX_DMA_ChInitStr.DstAddrCountMode   = DMA_CH_ADDRESS_COUNT_MODE_INCREMENT;
+            spi_bus_obj[i].dma.RX_DMA_ChInitStr.SrcAddrCountMode   = DMA_CH_ADDRESS_COUNT_MODE_NO_CHANGE;
+            spi_bus_obj[i].dma.RX_DMA_ChInitStr.DstBurstLen        = DMA_CH_BURST_LENGTH_1;
+            spi_bus_obj[i].dma.RX_DMA_ChInitStr.SrcBurstLen        = DMA_CH_BURST_LENGTH_1;
+            spi_bus_obj[i].dma.RX_DMA_ChInitStr.SrcGatherEn        = 0x0U;
+            spi_bus_obj[i].dma.RX_DMA_ChInitStr.DstScatterEn       = 0x0U;
+            spi_bus_obj[i].dma.RX_DMA_ChInitStr.TfrTypeFlowCtrl    = DMA_CH_TRANSFER_FLOW_P2M_DMA;
+            spi_bus_obj[i].dma.RX_DMA_ChInitStr.BlkTfrSize         = 0U;
+            spi_bus_obj[i].dma.RX_DMA_ChInitStr.pLinkListItem      = NULL;
+            spi_bus_obj[i].dma.RX_DMA_ChInitStr.SrcGatherInterval  = 0x0U;
+            spi_bus_obj[i].dma.RX_DMA_ChInitStr.SrcGatherCount     = 0x0U;
             spi_bus_obj[i].dma.RX_DMA_ChInitStr.DstScatterInterval = 0x0U;
-            spi_bus_obj[i].dma.RX_DMA_ChInitStr.DstScatterCount = 0x0U;
-            spi_bus_obj[i].dma.RX_DMA_ChInitStr.TfrType = DMA_CH_TRANSFER_TYPE_SINGLE_BLOCK;
-            spi_bus_obj[i].dma.RX_DMA_ChInitStr.ChannelPriority = DMA_CH_PRIORITY_7;
-            spi_bus_obj[i].dma.RX_DMA_ChInitStr.SrcHandshaking = DMA_CH_SRC_HANDSHAKING_HARDWARE;
-            spi_bus_obj[i].dma.RX_DMA_ChInitStr.DstHandshaking = DMA_CH_DST_HANDSHAKING_SOFTWARE;
-            spi_bus_obj[i].dma.RX_DMA_ChInitStr.SrcHsInterface = spi_bus_obj[i].config->dma_rx->HsInterface;
+            spi_bus_obj[i].dma.RX_DMA_ChInitStr.DstScatterCount    = 0x0U;
+            spi_bus_obj[i].dma.RX_DMA_ChInitStr.TfrType            = DMA_CH_TRANSFER_TYPE_SINGLE_BLOCK;
+            spi_bus_obj[i].dma.RX_DMA_ChInitStr.ChannelPriority    = DMA_CH_PRIORITY_7;
+            spi_bus_obj[i].dma.RX_DMA_ChInitStr.SrcHandshaking     = DMA_CH_SRC_HANDSHAKING_HARDWARE;
+            spi_bus_obj[i].dma.RX_DMA_ChInitStr.DstHandshaking     = DMA_CH_DST_HANDSHAKING_SOFTWARE;
+            spi_bus_obj[i].dma.RX_DMA_ChInitStr.SrcHsInterface     = spi_bus_obj[i].config->dma_rx->HsInterface;
 
             /* DMA controller must be enabled before initializing the channel */
             DMA_ControllerCmd(spi_bus_obj[i].config->dma_rx->Instance, ENABLE);
@@ -1342,6 +1465,36 @@ static int rt_hw_spi_bus_init(void)
                 LOG_E("SPI RX DMA channel initialization failed!");
                 return -RT_ERROR;
             }
+#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x)
+            /* Configure the SPI RX DMA for Transmission process */
+            /* Enable DMA clock */
+            RCC_EnableAHBPeriphClk(spi_bus_obj[i].config->dma_rx->dma_rcc, ENABLE);
+
+            /* Receive DMA Config */
+            DMA_StructInit(&spi_bus_obj[i].dma.RX_DMA_ChInitStr);
+            spi_bus_obj[i].dma.RX_DMA_ChInitStr.PeriphAddr         = (uint32_t)&spi_bus_obj[i].config->SPIx->DAT;
+            spi_bus_obj[i].dma.RX_DMA_ChInitStr.MemAddr            = 0;
+            spi_bus_obj[i].dma.RX_DMA_ChInitStr.Direction          = DMA_DIR_PERIPH_SRC;
+            spi_bus_obj[i].dma.RX_DMA_ChInitStr.BufSize            = 0;
+            spi_bus_obj[i].dma.RX_DMA_ChInitStr.PeriphInc          = DMA_PERIPH_INC_DISABLE;
+            spi_bus_obj[i].dma.RX_DMA_ChInitStr.MemoryInc          = DMA_MEM_INC_ENABLE;
+            spi_bus_obj[i].dma.RX_DMA_ChInitStr.PeriphDataSize     = DMA_PERIPH_DATA_WIDTH_BYTE;
+            spi_bus_obj[i].dma.RX_DMA_ChInitStr.MemDataSize        = DMA_MEM_DATA_WIDTH_BYTE;
+            spi_bus_obj[i].dma.RX_DMA_ChInitStr.CircularMode       = DMA_MODE_NORMAL;
+            spi_bus_obj[i].dma.RX_DMA_ChInitStr.Priority           = DMA_PRIORITY_HIGH;
+            spi_bus_obj[i].dma.RX_DMA_ChInitStr.Mem2Mem            = DMA_M2M_DISABLE;
+#if defined(SOC_SERIES_N32H49x)
+            spi_bus_obj[i].dma.RX_DMA_ChInitStr.BurstCmd           = DMA_BURST_DISABLE;
+#endif
+            /* Initialize the specified DMA channel and Whether the specified channel was successfully initialized */
+            DMA_Init(spi_bus_obj[i].config->dma_rx->DMAChx, &spi_bus_obj[i].dma.RX_DMA_ChInitStr);
+            
+            /* Enable transfer complete interrupt */
+            DMA_ConfigInt(spi_bus_obj[i].config->dma_rx->DMAChx, DMA_INT_TXC, ENABLE);
+                
+            spi_bus_obj[i].dma.DMA_Rx_Init = RT_TRUE;
+            
+
 #endif
         }
 
@@ -1356,29 +1509,30 @@ static int rt_hw_spi_bus_init(void)
 
             /* SPI_MASTER_Tx_DMA_Channel DMA1 Channel1 configuration ---------------------------------------------*/
             DMA_ChannelStructInit(&spi_bus_obj[i].dma.TX_DMA_ChInitStr);
-            spi_bus_obj[i].dma.TX_DMA_ChInitStr.IntEn = 0x1U;
-            spi_bus_obj[i].dma.TX_DMA_ChInitStr.DstAddr = (uint32_t)&spi_bus_obj[i].config->SPIx->DAT;
-            spi_bus_obj[i].dma.TX_DMA_ChInitStr.SrcAddr = NULL;
-            spi_bus_obj[i].dma.TX_DMA_ChInitStr.SrcTfrWidth = DMA_CH_TRANSFER_WIDTH_8;
-            spi_bus_obj[i].dma.TX_DMA_ChInitStr.DstTfrWidth = DMA_CH_TRANSFER_WIDTH_8;
-            spi_bus_obj[i].dma.TX_DMA_ChInitStr.DstAddrCountMode = DMA_CH_ADDRESS_COUNT_MODE_NO_CHANGE;
-            spi_bus_obj[i].dma.TX_DMA_ChInitStr.SrcAddrCountMode = DMA_CH_ADDRESS_COUNT_MODE_INCREMENT;
-            spi_bus_obj[i].dma.TX_DMA_ChInitStr.DstBurstLen = DMA_CH_BURST_LENGTH_1;
-            spi_bus_obj[i].dma.TX_DMA_ChInitStr.SrcBurstLen = DMA_CH_BURST_LENGTH_1;
-            spi_bus_obj[i].dma.TX_DMA_ChInitStr.SrcGatherEn = 0x0U;
-            spi_bus_obj[i].dma.TX_DMA_ChInitStr.DstScatterEn = 0x0U;
-            spi_bus_obj[i].dma.TX_DMA_ChInitStr.TfrTypeFlowCtrl = DMA_CH_TRANSFER_FLOW_M2P_DMA;
-            spi_bus_obj[i].dma.TX_DMA_ChInitStr.BlkTfrSize = 0U;
-            spi_bus_obj[i].dma.TX_DMA_ChInitStr.pLinkListItem = NULL;
-            spi_bus_obj[i].dma.TX_DMA_ChInitStr.SrcGatherInterval = 0x0U;
-            spi_bus_obj[i].dma.TX_DMA_ChInitStr.SrcGatherCount = 0x0U;
+            
+            spi_bus_obj[i].dma.TX_DMA_ChInitStr.IntEn              = 0x1U;
+            spi_bus_obj[i].dma.TX_DMA_ChInitStr.DstAddr            = (uint32_t)&spi_bus_obj[i].config->SPIx->DAT;
+            spi_bus_obj[i].dma.TX_DMA_ChInitStr.SrcAddr            = NULL;
+            spi_bus_obj[i].dma.TX_DMA_ChInitStr.SrcTfrWidth        = DMA_CH_TRANSFER_WIDTH_8;
+            spi_bus_obj[i].dma.TX_DMA_ChInitStr.DstTfrWidth        = DMA_CH_TRANSFER_WIDTH_8;
+            spi_bus_obj[i].dma.TX_DMA_ChInitStr.DstAddrCountMode   = DMA_CH_ADDRESS_COUNT_MODE_NO_CHANGE;
+            spi_bus_obj[i].dma.TX_DMA_ChInitStr.SrcAddrCountMode   = DMA_CH_ADDRESS_COUNT_MODE_INCREMENT;
+            spi_bus_obj[i].dma.TX_DMA_ChInitStr.DstBurstLen        = DMA_CH_BURST_LENGTH_1;
+            spi_bus_obj[i].dma.TX_DMA_ChInitStr.SrcBurstLen        = DMA_CH_BURST_LENGTH_1;
+            spi_bus_obj[i].dma.TX_DMA_ChInitStr.SrcGatherEn        = 0x0U;
+            spi_bus_obj[i].dma.TX_DMA_ChInitStr.DstScatterEn       = 0x0U;
+            spi_bus_obj[i].dma.TX_DMA_ChInitStr.TfrTypeFlowCtrl    = DMA_CH_TRANSFER_FLOW_M2P_DMA;
+            spi_bus_obj[i].dma.TX_DMA_ChInitStr.BlkTfrSize         = 0U;
+            spi_bus_obj[i].dma.TX_DMA_ChInitStr.pLinkListItem      = NULL;
+            spi_bus_obj[i].dma.TX_DMA_ChInitStr.SrcGatherInterval  = 0x0U;
+            spi_bus_obj[i].dma.TX_DMA_ChInitStr.SrcGatherCount     = 0x0U;
             spi_bus_obj[i].dma.TX_DMA_ChInitStr.DstScatterInterval = 0x0U;
-            spi_bus_obj[i].dma.TX_DMA_ChInitStr.DstScatterCount = 0x0U;
-            spi_bus_obj[i].dma.TX_DMA_ChInitStr.TfrType = DMA_CH_TRANSFER_TYPE_SINGLE_BLOCK;
-            spi_bus_obj[i].dma.TX_DMA_ChInitStr.ChannelPriority = DMA_CH_PRIORITY_7;
-            spi_bus_obj[i].dma.TX_DMA_ChInitStr.SrcHandshaking = DMA_CH_SRC_HANDSHAKING_SOFTWARE;
-            spi_bus_obj[i].dma.TX_DMA_ChInitStr.DstHandshaking = DMA_CH_DST_HANDSHAKING_HARDWARE;
-            spi_bus_obj[i].dma.TX_DMA_ChInitStr.DstHsInterface = spi_bus_obj[i].config->dma_tx->HsInterface;
+            spi_bus_obj[i].dma.TX_DMA_ChInitStr.DstScatterCount    = 0x0U;
+            spi_bus_obj[i].dma.TX_DMA_ChInitStr.TfrType            = DMA_CH_TRANSFER_TYPE_SINGLE_BLOCK;
+            spi_bus_obj[i].dma.TX_DMA_ChInitStr.ChannelPriority    = DMA_CH_PRIORITY_7;
+            spi_bus_obj[i].dma.TX_DMA_ChInitStr.SrcHandshaking     = DMA_CH_SRC_HANDSHAKING_SOFTWARE;
+            spi_bus_obj[i].dma.TX_DMA_ChInitStr.DstHandshaking     = DMA_CH_DST_HANDSHAKING_HARDWARE;
+            spi_bus_obj[i].dma.TX_DMA_ChInitStr.DstHsInterface     = spi_bus_obj[i].config->dma_tx->HsInterface;
 
             /* DMA controller must be enabled before initializing the channel */
             DMA_ControllerCmd(spi_bus_obj[i].config->dma_tx->Instance, ENABLE);
@@ -1396,6 +1550,36 @@ static int rt_hw_spi_bus_init(void)
                 LOG_E("SPI TX DMA channel initialization failed!");
                 return -RT_ERROR;
             }
+#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x)
+            /* Configure the SPI TX DMA for Transmission process */
+            /* Enable DMA clock */
+            RCC_EnableAHBPeriphClk(spi_bus_obj[i].config->dma_tx->dma_rcc, ENABLE);
+
+            /* SPI_MASTER_Tx_DMA_Channel DMA1 Channel1 configuration ---------------------------------------------*/
+            DMA_StructInit(&spi_bus_obj[i].dma.TX_DMA_ChInitStr);
+            spi_bus_obj[i].dma.TX_DMA_ChInitStr.PeriphAddr         = (uint32_t)&spi_bus_obj[i].config->SPIx->DAT;
+            spi_bus_obj[i].dma.TX_DMA_ChInitStr.MemAddr            = 0;
+            spi_bus_obj[i].dma.TX_DMA_ChInitStr.Direction          = DMA_DIR_PERIPH_DST;
+            spi_bus_obj[i].dma.TX_DMA_ChInitStr.BufSize            = 0;
+            spi_bus_obj[i].dma.TX_DMA_ChInitStr.PeriphInc          = DMA_PERIPH_INC_DISABLE;
+            spi_bus_obj[i].dma.TX_DMA_ChInitStr.MemoryInc          = DMA_MEM_INC_ENABLE;
+            spi_bus_obj[i].dma.TX_DMA_ChInitStr.PeriphDataSize     = DMA_PERIPH_DATA_WIDTH_BYTE;
+            spi_bus_obj[i].dma.TX_DMA_ChInitStr.MemDataSize        = DMA_MEM_DATA_WIDTH_BYTE;
+            spi_bus_obj[i].dma.TX_DMA_ChInitStr.CircularMode       = DMA_MODE_NORMAL;
+            spi_bus_obj[i].dma.TX_DMA_ChInitStr.Priority           = DMA_PRIORITY_HIGH;
+            spi_bus_obj[i].dma.TX_DMA_ChInitStr.Mem2Mem            = DMA_M2M_DISABLE;
+#if defined(SOC_SERIES_N32H49x)
+            spi_bus_obj[i].dma.TX_DMA_ChInitStr.BurstCmd           = DMA_BURST_DISABLE;
+#endif
+            /* Initialize the specified DMA channel and Whether the specified channel was successfully initialized */
+            DMA_Init(spi_bus_obj[i].config->dma_tx->DMAChx, &spi_bus_obj[i].dma.TX_DMA_ChInitStr);
+            
+            /* Enable transfer complete interrupt */
+            DMA_ConfigInt(spi_bus_obj[i].config->dma_tx->DMAChx, DMA_INT_TXC, ENABLE);
+                
+            spi_bus_obj[i].dma.DMA_Tx_Init = RT_TRUE;
+            
+
 #endif
         }
 
@@ -1442,12 +1626,12 @@ rt_err_t rt_hw_spi_device_attach(const char *bus_name, const char *device_name, 
 }
 
 
-#if defined(BSP_SPI1_RX_USING_DMA) || defined(BSP_SPI1_TX_USING_DMA) || \
-    defined(BSP_SPI2_RX_USING_DMA) || defined(BSP_SPI2_TX_USING_DMA) || \
-    defined(BSP_SPI3_RX_USING_DMA) || defined(BSP_SPI3_TX_USING_DMA) || \
-    defined(BSP_SPI4_RX_USING_DMA) || defined(BSP_SPI4_TX_USING_DMA) || \
-    defined(BSP_SPI5_RX_USING_DMA) || defined(BSP_SPI5_TX_USING_DMA) || \
-    defined(BSP_SPI6_RX_USING_DMA) || defined(BSP_SPI6_TX_USING_DMA) || \
+#if defined(BSP_SPI1_RX_USING_DMA) || defined(BSP_SPI1_TX_USING_DMA) ||  \
+    defined(BSP_SPI2_RX_USING_DMA) || defined(BSP_SPI2_TX_USING_DMA) ||  \
+    defined(BSP_SPI3_RX_USING_DMA) || defined(BSP_SPI3_TX_USING_DMA) ||  \
+    defined(BSP_SPI4_RX_USING_DMA) || defined(BSP_SPI4_TX_USING_DMA) ||  \
+    defined(BSP_SPI5_RX_USING_DMA) || defined(BSP_SPI5_TX_USING_DMA) ||  \
+    defined(BSP_SPI6_RX_USING_DMA) || defined(BSP_SPI6_TX_USING_DMA) ||  \
     defined(BSP_SPI7_RX_USING_DMA) || defined(BSP_SPI7_TX_USING_DMA)
 static void spi_isr(struct n32_spi *spi_drv)
 {
@@ -1459,6 +1643,8 @@ static void spi_isr(struct n32_spi *spi_drv)
         {
 #if defined(SOC_SERIES_N32H7xx)
             DMA_ChannelEventCmd(spi_drv->config->dma_tx->Instance, spi_drv->config->dma_tx->dma_channel, DMA_CH_EVENT_TRANSFER_COMPLETE, DISABLE);
+#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x)
+            DMA_ConfigInt(spi_drv->config->dma_tx->DMAChx, DMA_INT_TXC, DISABLE);
 #endif
         }
 
@@ -1466,6 +1652,8 @@ static void spi_isr(struct n32_spi *spi_drv)
         {
 #if defined(SOC_SERIES_N32H7xx)
             DMA_ChannelEventCmd(spi_drv->config->dma_rx->Instance, spi_drv->config->dma_rx->dma_channel, DMA_CH_EVENT_TRANSFER_COMPLETE, DISABLE);
+#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x)
+            DMA_ConfigInt(spi_drv->config->dma_rx->DMAChx, DMA_INT_TXC, DISABLE);
 #endif
         }
 
@@ -1475,13 +1663,14 @@ static void spi_isr(struct n32_spi *spi_drv)
         SPI_I2S_GetStatus(spi_drv->config->SPIx, SPI_I2S_OVER_FLAG);
     }
 }
+#endif
 
-#if defined(BSP_SPI1_RX_USING_DMA) || \
-    defined(BSP_SPI2_RX_USING_DMA) || \
-    defined(BSP_SPI3_RX_USING_DMA) || \
-    defined(BSP_SPI4_RX_USING_DMA) || \
-    defined(BSP_SPI5_RX_USING_DMA) || \
-    defined(BSP_SPI6_RX_USING_DMA) || \
+#if defined(BSP_SPI1_RX_USING_DMA)  || \
+    defined(BSP_SPI2_RX_USING_DMA)  || \
+    defined(BSP_SPI3_RX_USING_DMA)  || \
+    defined(BSP_SPI4_RX_USING_DMA)  || \
+    defined(BSP_SPI5_RX_USING_DMA)  || \
+    defined(BSP_SPI6_RX_USING_DMA)  || \
     defined(BSP_SPI7_RX_USING_DMA)
 static void spi_rx_dma_isr(struct n32_spi *spi_drv)
 {
@@ -1490,6 +1679,30 @@ static void spi_rx_dma_isr(struct n32_spi *spi_drv)
     {
         if (DMA_GetChannelIntTfrStatus(spi_drv->config->dma_rx->Instance, spi_drv->config->dma_rx->dma_channel) == SET)
         {
+#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x)
+    DMA_Module *dma_module = (DMA_Module *)((uint32_t)spi_drv->config->dma_rx->DMAChx < DMA2_BASE ? DMA1 : DMA2);
+    uint32_t dma_int_tc = 0;
+    
+    /* Obtain the corresponding interrupt flag macro based on the channel */
+    if (spi_drv->config->dma_rx->DMAChx == DMA1_CH1)      dma_int_tc = DMA_INT_TXC1;
+    else if (spi_drv->config->dma_rx->DMAChx == DMA1_CH2) dma_int_tc = DMA_INT_TXC2;
+    else if (spi_drv->config->dma_rx->DMAChx == DMA1_CH3) dma_int_tc = DMA_INT_TXC3;
+    else if (spi_drv->config->dma_rx->DMAChx == DMA1_CH4) dma_int_tc = DMA_INT_TXC4;
+    else if (spi_drv->config->dma_rx->DMAChx == DMA1_CH5) dma_int_tc = DMA_INT_TXC5;
+    else if (spi_drv->config->dma_rx->DMAChx == DMA1_CH6) dma_int_tc = DMA_INT_TXC6;
+    else if (spi_drv->config->dma_rx->DMAChx == DMA1_CH7) dma_int_tc = DMA_INT_TXC7;
+    else if (spi_drv->config->dma_rx->DMAChx == DMA1_CH8) dma_int_tc = DMA_INT_TXC8;
+    else if (spi_drv->config->dma_rx->DMAChx == DMA2_CH1) dma_int_tc = DMA_INT_TXC1; 
+    else if (spi_drv->config->dma_rx->DMAChx == DMA2_CH2) dma_int_tc = DMA_INT_TXC2;
+    else if (spi_drv->config->dma_rx->DMAChx == DMA2_CH3) dma_int_tc = DMA_INT_TXC3;
+    else if (spi_drv->config->dma_rx->DMAChx == DMA2_CH4) dma_int_tc = DMA_INT_TXC4;
+    else if (spi_drv->config->dma_rx->DMAChx == DMA2_CH5) dma_int_tc = DMA_INT_TXC5;
+    else if (spi_drv->config->dma_rx->DMAChx == DMA2_CH6) dma_int_tc = DMA_INT_TXC6;
+    else if (spi_drv->config->dma_rx->DMAChx == DMA2_CH7) dma_int_tc = DMA_INT_TXC7;
+    else if (spi_drv->config->dma_rx->DMAChx == DMA2_CH8) dma_int_tc = DMA_INT_TXC8;
+
+    if (dma_int_tc != 0 && DMA_GetIntStatus(dma_int_tc, dma_module) == SET)
+    {
 #endif
             if (spi_drv->Direct == SPI_Tx_Rx)
             {
@@ -1498,6 +1711,9 @@ static void spi_rx_dma_isr(struct n32_spi *spi_drv)
 #if defined(SOC_SERIES_N32H7xx)
                 DMA_ChannelEventCmd(spi_drv->config->dma_rx->Instance, spi_drv->config->dma_rx->dma_channel, DMA_CH_EVENT_TRANSFER_COMPLETE, DISABLE);
                 DMA_ChannelEventCmd(spi_drv->config->dma_tx->Instance, spi_drv->config->dma_tx->dma_channel, DMA_CH_EVENT_TRANSFER_COMPLETE, DISABLE);
+#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x)
+                DMA_ConfigInt(spi_drv->config->dma_rx->DMAChx, DMA_INT_TXC, DISABLE);
+                DMA_ConfigInt(spi_drv->config->dma_tx->DMAChx, DMA_INT_TXC, DISABLE);
 #endif
 
                 if (spi_drv->SPI_InitStructure.SpiMode == SPI_MODE_MASTER && spi_drv->SPI_InitStructure.DataDirection == SPI_DIR_DOUBLELINE_FULLDUPLEX)
@@ -1514,17 +1730,18 @@ static void spi_rx_dma_isr(struct n32_spi *spi_drv)
             else if (spi_drv->Direct == SPI_Rx)
             {
                 if (spi_drv->SPI_InitStructure.SpiMode == SPI_MODE_MASTER && (spi_drv->SPI_InitStructure.DataDirection == SPI_DIR_SINGLELINE_RX ||
-                                                                              spi_drv->SPI_InitStructure.DataDirection == SPI_DIR_DOUBLELINE_RONLY))
+                        spi_drv->SPI_InitStructure.DataDirection == SPI_DIR_DOUBLELINE_RONLY))
                 {
                     SPI_Enable(spi_drv->config->SPIx, DISABLE);
                 }
 
                 SPI_I2S_EnableDma(spi_drv->config->SPIx, SPI_I2S_DMA_RX, DISABLE);
-
                 SPI_I2S_EnableInt(spi_drv->config->SPIx, SPI_I2S_INT_ERR, DISABLE);
 
 #if defined(SOC_SERIES_N32H7xx)
                 DMA_ChannelEventCmd(spi_drv->config->dma_rx->Instance, spi_drv->config->dma_rx->dma_channel, DMA_CH_EVENT_TRANSFER_COMPLETE, DISABLE);
+#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x)
+                DMA_ConfigInt(spi_drv->config->dma_rx->DMAChx, DMA_INT_TXC, DISABLE);
 #endif
 
                 SPI_I2S_ReceiveData(spi_drv->config->SPIx);
@@ -1537,8 +1754,12 @@ static void spi_rx_dma_isr(struct n32_spi *spi_drv)
 #if defined(SOC_SERIES_N32H7xx)
             /* Clear interrupt event status */
             DMA_ClearChannelEventStatus(spi_drv->config->dma_rx->Instance, spi_drv->config->dma_rx->dma_channel, DMA_CH_EVENT_TRANSFER_COMPLETE);
-#endif
         }
+#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x)
+            /* Clear interrupt event status */
+            DMA_ClrIntPendingBit(dma_int_tc, dma_module);
+#endif
+        
     }
 }
 #endif
@@ -1550,12 +1771,42 @@ static void spi_tx_dma_isr(struct n32_spi *spi_drv)
     {
         if (DMA_GetChannelIntTfrStatus(spi_drv->config->dma_tx->Instance, spi_drv->config->dma_tx->dma_channel) == SET)
         {
-#endif
+#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x)
+    DMA_Module *dma_module = (DMA_Module *)((uint32_t)spi_drv->config->dma_tx->DMAChx < DMA2_BASE ? DMA1 : DMA2);
+    uint32_t dma_int_tc = 0;
+
+    if (spi_drv->config->dma_tx->DMAChx == DMA1_CH1)      dma_int_tc = DMA_INT_TXC1;
+    else if (spi_drv->config->dma_tx->DMAChx == DMA1_CH2) dma_int_tc = DMA_INT_TXC2;
+    else if (spi_drv->config->dma_tx->DMAChx == DMA1_CH3) dma_int_tc = DMA_INT_TXC3;
+    else if (spi_drv->config->dma_tx->DMAChx == DMA1_CH4) dma_int_tc = DMA_INT_TXC4;
+    else if (spi_drv->config->dma_tx->DMAChx == DMA1_CH5) dma_int_tc = DMA_INT_TXC5;
+    else if (spi_drv->config->dma_tx->DMAChx == DMA1_CH6) dma_int_tc = DMA_INT_TXC6;
+    else if (spi_drv->config->dma_tx->DMAChx == DMA1_CH7) dma_int_tc = DMA_INT_TXC7;
+    else if (spi_drv->config->dma_tx->DMAChx == DMA1_CH8) dma_int_tc = DMA_INT_TXC8;
+    else if (spi_drv->config->dma_tx->DMAChx == DMA2_CH1) dma_int_tc = DMA_INT_TXC1; 
+    else if (spi_drv->config->dma_tx->DMAChx == DMA2_CH2) dma_int_tc = DMA_INT_TXC2;
+    else if (spi_drv->config->dma_tx->DMAChx == DMA2_CH3) dma_int_tc = DMA_INT_TXC3;
+    else if (spi_drv->config->dma_tx->DMAChx == DMA2_CH4) dma_int_tc = DMA_INT_TXC4;
+    else if (spi_drv->config->dma_tx->DMAChx == DMA2_CH5) dma_int_tc = DMA_INT_TXC5;
+    else if (spi_drv->config->dma_tx->DMAChx == DMA2_CH6) dma_int_tc = DMA_INT_TXC6;
+    else if (spi_drv->config->dma_tx->DMAChx == DMA2_CH7) dma_int_tc = DMA_INT_TXC7;
+    else if (spi_drv->config->dma_tx->DMAChx == DMA2_CH8) dma_int_tc = DMA_INT_TXC8;
+
+     if (dma_int_tc != 0 && DMA_GetIntStatus(dma_int_tc, dma_module) == SET)
+    {
+ #endif
             if (spi_drv->Direct == SPI_Tx)
             {
-                DMA_ChannelEventCmd(spi_drv->config->dma_tx->Instance, spi_drv->config->dma_tx->dma_channel, DMA_CH_EVENT_TRANSFER_COMPLETE, DISABLE);
 
+#if defined(SOC_SERIES_N32H7xx)
+                DMA_ChannelEventCmd(spi_drv->config->dma_tx->Instance, spi_drv->config->dma_tx->dma_channel, DMA_CH_EVENT_TRANSFER_COMPLETE, DISABLE);
+				
+				SPI_I2S_EnableDma(spi_drv->config->SPIx, SPI_I2S_DMA_TX, DISABLE);
+#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x)           
+                SPI_I2S_EnableInt(spi_drv->config->SPIx, SPI_I2S_INT_ERR, DISABLE);
+                
                 SPI_I2S_EnableDma(spi_drv->config->SPIx, SPI_I2S_DMA_TX, DISABLE);
+#endif
 
                 SPI_I2S_ReceiveData(spi_drv->config->SPIx);
                 SPI_I2S_GetStatus(spi_drv->config->SPIx, SPI_I2S_OVER_FLAG);
@@ -1564,12 +1815,18 @@ static void spi_tx_dma_isr(struct n32_spi *spi_drv)
                 rt_completion_done(&spi_drv->cpt);
             }
 
+#if defined(SOC_SERIES_N32H7xx)
             /* Clear interrupt event status */
             DMA_ClearChannelEventStatus(spi_drv->config->dma_tx->Instance, spi_drv->config->dma_tx->dma_channel, DMA_CH_EVENT_TRANSFER_COMPLETE);
-        }
-    }
-}
+        }  
+    }  
+#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x)
+            /* Clear interrupt event status */
+            DMA_ClrIntPendingBit(dma_int_tc, dma_module);
+    }  
 #endif
+
+}
 
 #if defined(BSP_SPI1_TX_USING_DMA) || defined(BSP_SPI1_RX_USING_DMA)
 void SPI1_IRQHandler(void)
@@ -1610,7 +1867,13 @@ void SPI1_TX_DMA_IRQHandler(void)
 
 
 #if defined(BSP_SPI2_TX_USING_DMA) || defined(BSP_SPI2_RX_USING_DMA)
+
+#if defined(SOC_SERIES_N32H7xx)
 void SPI2_IRQHandler(void)
+#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x)
+void SPI2_I2S2_IRQHandler(void)
+#endif
+
 {
     /* enter interrupt */
     rt_interrupt_enter();
@@ -1647,8 +1910,13 @@ void SPI2_TX_DMA_IRQHandler(void)
 #endif /* defined(BSP_USING_SPI2) && defined(BSP_SPI2_TX_USING_DMA) */
 
 
+
 #if defined(BSP_SPI3_TX_USING_DMA) || defined(BSP_SPI3_RX_USING_DMA)
+#if defined(SOC_SERIES_N32H7xx)
 void SPI3_IRQHandler(void)
+#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x)
+void SPI3_I2S3_IRQHandler(void)
+#endif 
 {
     /* enter interrupt */
     rt_interrupt_enter();
@@ -1683,6 +1951,7 @@ void SPI3_TX_DMA_IRQHandler(void)
     rt_interrupt_leave();
 }
 #endif /* defined(BSP_USING_SPI3) && defined(BSP_SPI3_TX_USING_DMA) */
+
 
 
 #if defined(BSP_SPI4_TX_USING_DMA) || defined(BSP_SPI4_RX_USING_DMA)
@@ -1723,6 +1992,8 @@ void SPI4_TX_DMA_IRQHandler(void)
 #endif /* defined(BSP_USING_SPI4) && defined(BSP_SPI4_TX_USING_DMA) */
 
 
+
+
 #if defined(BSP_SPI5_TX_USING_DMA) || defined(BSP_SPI5_RX_USING_DMA)
 void SPI5_IRQHandler(void)
 {
@@ -1761,6 +2032,8 @@ void SPI5_TX_DMA_IRQHandler(void)
 #endif /* defined(BSP_USING_SPI5) && defined(BSP_SPI5_TX_USING_DMA) */
 
 
+
+
 #if defined(BSP_SPI6_TX_USING_DMA) || defined(BSP_SPI6_RX_USING_DMA)
 void SPI6_IRQHandler(void)
 {
@@ -1797,6 +2070,7 @@ void SPI6_TX_DMA_IRQHandler(void)
     rt_interrupt_leave();
 }
 #endif /* defined(BSP_USING_SPI6) && defined(BSP_SPI6_TX_USING_DMA) */
+
 
 
 #if defined(BSP_SPI7_TX_USING_DMA) || defined(BSP_SPI7_RX_USING_DMA)
@@ -1935,6 +2209,7 @@ static void n32_spi_get_dma_config(void)
     spi_config[SPI7_INDEX].dma_tx = &spi7_dma_tx;
 #endif /* BSP_SPI7_TX_USING_DMA */
 #endif /* BSP_USING_SPI7 */
+
 }
 
 
@@ -1943,6 +2218,7 @@ int rt_hw_spi_init(void)
     n32_spi_get_dma_config();
     return rt_hw_spi_bus_init();
 }
+
 INIT_BOARD_EXPORT(rt_hw_spi_init);
 
 

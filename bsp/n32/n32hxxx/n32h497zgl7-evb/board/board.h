@@ -19,6 +19,7 @@
 #include "n32h49x_pwr.h"
 #include "n32h49x_dbg.h"
 #include "n32h49x_flash.h"
+#include "n32h49x_spi.h"
 #include "drv_common.h"
 #include "drv_gpio.h"
 
