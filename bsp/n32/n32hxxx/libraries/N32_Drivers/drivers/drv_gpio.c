@@ -24,40 +24,17 @@
 
 static uint32_t pin_irq_enable_mask = 0;
 
-#if defined(GPIOK)
+
 #if defined(SOC_SERIES_N32H7xx)
+
+    #define __N32_PORT_MAX 11u
+
+#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x) 
+
     #define __N32_PORT_MAX 8u
+
 #endif
-#elif defined(GPIOJ)
-    #define __N32_PORT_MAX 16u
-#elif defined(GPIOI)
-    #define __N32_PORT_MAX 16u
-#elif defined(GPIOH)
-#if defined(SOC_SERIES_N32H7xx)
-    #define __N32_PORT_MAX 16u
-#elif defined(SOC_SERIES_N32H49x)
-    #define __N32_PORT_MAX 6u
-#elif defined(SOC_SERIES_N32H47x_48x) 
-    #define __N32_PORT_MAX 7u
-#endif
-#elif defined(GPIOG)
-    #define __N32_PORT_MAX 16u
-#elif defined(GPIOF)
-    #define __N32_PORT_MAX 16u
-#elif defined(GPIOE)
-    #define __N32_PORT_MAX 16u
-#elif defined(GPIOD)
-    #define __N32_PORT_MAX 16u
-#elif defined(GPIOC)
-    #define __N32_PORT_MAX 16u
-#elif defined(GPIOB)
-    #define __N32_PORT_MAX 16u
-#elif defined(GPIOA)
-    #define __N32_PORT_MAX 16u
-#else
-    #define __N32_PORT_MAX 0u
-    #error Unsupported N32 GPIO peripheral.
-#endif
+
 
 #define PIN_STPORT_MAX __N32_PORT_MAX
 
@@ -392,12 +369,12 @@ static rt_err_t n32_pin_irq_enable(struct rt_device *device, rt_base_t pin,
             break;
         case PIN_IRQ_MODE_FALLING:
             GPIO_InitStructure.GPIO_Mode = GPIO_MODE_INPUT;
-            GPIO_InitStructure.GPIO_Pull = GPIO_PULL_DOWN;
+            GPIO_InitStructure.GPIO_Pull = GPIO_PULL_UP;
             EXTI_InitStructure.EXTI_Trigger = EXTI_Trigger_Falling;
             break;
         case PIN_IRQ_MODE_RISING_FALLING:
             GPIO_InitStructure.GPIO_Mode = GPIO_MODE_INPUT;
-            GPIO_InitStructure.GPIO_Pull = GPIO_NO_PULL;
+            GPIO_InitStructure.GPIO_Pull = GPIO_PULL_UP;
             EXTI_InitStructure.EXTI_Trigger = EXTI_Trigger_Rising_Falling;
             break;
         }
