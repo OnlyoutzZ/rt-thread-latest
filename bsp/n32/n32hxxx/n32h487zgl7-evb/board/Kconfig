@@ -2,6 +2,48 @@ menu "Hardware Drivers Config"
 
 menu "Onboard Peripheral Drivers"
 
+    menuconfig BSP_USING_ETH
+        bool "Enable Ethernet"
+        default n
+        select RT_USING_LWIP
+        if BSP_USING_ETH
+            choice BSP_ETH_INTERFACE_SEL
+                prompt "Select Media Interface"
+                default ETH_INTERFACE_USING_RMII
+
+                config ETH_INTERFACE_USING_MII
+                    bool "MII"
+
+                config ETH_INTERFACE_USING_RMII
+                    bool "RMII"
+            endchoice
+
+            choice BSP_ETH_PHY_SEL
+                prompt "Select PHY Chip"
+                default PHY_USING_DM9162EP
+
+                config PHY_USING_DM9162EP
+                    bool "DM9162EP (10M/100M, MII/RMII)"
+
+                config PHY_USING_LAN8720A
+                    bool "LAN8720A (10M/100M, MII/RMII)"
+            endchoice
+
+            config BSP_ETH_USING_HW_CHECKSUM
+                bool "Enable Hardware Checksum"
+                select RT_LWIP_USING_HW_CHECKSUM
+                default n
+
+            config PHY_USING_INTERRUPT_MODE
+                bool "Enable PHY Link Change Interrupt Mode"
+                default n
+                if PHY_USING_INTERRUPT_MODE
+                    config PHY_INT_PIN
+                        int "PHY Interrupt Pin Number"
+                        range 0 255
+                        default 0
+                endif
+        endif
 endmenu
 
 menu "On-chip Peripheral Drivers"

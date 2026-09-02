@@ -8,6 +8,8 @@ cwd  = GetCurrentDir()
 src = []
 path =  [cwd]
     
+if GetDepend(['BSP_USING_ETH']):
+    src += Glob('phy_reset.c')
 CPPDEFINES = ['']
 group = DefineGroup('Drivers', src, depend = [''], CPPPATH = path, CPPDEFINES = CPPDEFINES)
 

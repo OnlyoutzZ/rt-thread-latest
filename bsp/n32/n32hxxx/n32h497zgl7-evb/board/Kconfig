@@ -2,6 +2,129 @@ menu "Hardware Drivers Config"
 
 menu "Onboard Peripheral Drivers"
 
+    menuconfig BSP_USING_ETH
+        bool "Enable Ethernet"
+        default n
+        select RT_USING_LWIP
+        if BSP_USING_ETH
+            choice BSP_ETH_INTERFACE_SEL
+                prompt "Select Media Interface"
+                default ETH_INTERFACE_USING_RMII
+
+                config ETH_INTERFACE_USING_MII
+                    bool "MII"
+
+                config ETH_INTERFACE_USING_RMII
+                    bool "RMII"
+            endchoice
+
+            choice BSP_ETH_PHY_SEL
+                prompt "Select PHY Chip"
+                default PHY_USING_DM9162EP
+
+                config PHY_USING_DM9162EP
+                    bool "DM9162EP (10M/100M, MII/RMII)"
+
+                config PHY_USING_LAN8720A
+                    bool "LAN8720A (10M/100M, MII/RMII)"
+            endchoice
+
+            config BSP_ETH_USING_HW_CHECKSUM
+                bool "Enable Hardware Checksum"
+                select RT_LWIP_USING_HW_CHECKSUM
+                default n
+
+            config PHY_USING_INTERRUPT_MODE
+                bool "Enable PHY Link Change Interrupt Mode"
+                default n
+                if PHY_USING_INTERRUPT_MODE
+                    config PHY_INT_PIN
+                        int "PHY Interrupt Pin Number"
+                        range 0 255
+                        default 0
+                endif
+        endif
+
+    menuconfig BSP_USING_SDRAM
+        bool "Enable SDRAM"
+        default n
+        if BSP_USING_SDRAM
+            choice BSP_SDRAM_BANK_SEL
+                prompt "Select SDRAM Bank"
+                default BSP_SDRAM_BANK1
+
+                config BSP_SDRAM_BANK1
+                    bool "Select SDRAM Bank1"
+
+                config BSP_SDRAM_BANK2
+                    bool "Select SDRAM Bank2"
+            endchoice
+
+            choice BSP_SDRAM_DATA_WIDTH_SEL
+                prompt "Select SDRAM Data Width"
+                default BSP_SDRAM_DATA_WIDTH_32
+
+                config BSP_SDRAM_DATA_WIDTH_8
+                    bool "SDRAM Data Width 8-bits"
+
+                config BSP_SDRAM_DATA_WIDTH_16
+                    bool "SDRAM Data Width 16-bits"
+
+                config BSP_SDRAM_DATA_WIDTH_32
+                    bool "SDRAM Data Width 32-bits"
+            endchoice
+
+            choice BSP_SDRAM_COLUMN_BITS_SEL
+                prompt "Select SDRAM Column Bits"
+                default BSP_SDRAM_COLUMN_BIT_9
+
+                config BSP_SDRAM_COLUMN_BIT_8
+                    bool "SDRAM SDRAM Column Bits 8-bits"
+
+                config BSP_SDRAM_COLUMN_BIT_9
+                    bool "SDRAM SDRAM Column Bits 9-bits"
+
+                config BSP_SDRAM_COLUMN_BIT_10
+                    bool "SDRAM SDRAM Column Bits 10-bits"
+
+                config BSP_SDRAM_COLUMN_BIT_11
+                    bool "SDRAM SDRAM Column Bits 11-bits"
+            endchoice
+
+            choice BSP_SDRAM_ROW_BITS_SEL
+                prompt "Select SDRAM Row Bits"
+                default BSP_SDRAM_ROW_BIT_12
+
+                config BSP_SDRAM_ROW_BIT_11
+                    bool "SDRAM SDRAM Row Bits 11-bits"
+
+                config BSP_SDRAM_ROW_BIT_12
+                    bool "SDRAM SDRAM Row Bits 12-bits"
+
+                config BSP_SDRAM_ROW_BIT_13
+                    bool "SDRAM SDRAM Row Bits 13-bits"
+            endchoice
+
+            choice BSP_SDRAM_CAS_LATENCY_SEL
+                prompt "Select SDRAM CAS Latency"
+                default BSP_SDRAM_CAS_LATENCY_3
+
+                config BSP_SDRAM_CAS_LATENCY_1
+                    bool "SDRAM SDRAM CAS Latency 1"
+
+                config BSP_SDRAM_CAS_LATENCY_2
+                    bool "SDRAM SDRAM CAS Latency 2"
+
+                config BSP_SDRAM_CAS_LATENCY_3
+                    bool "SDRAM SDRAM CAS Latency 3"
+            endchoice
+
+            config BSP_SDRAM_SIZE
+                int "SDRAM Size (MBytes)"
+                range 8 256
+                default 32
+        endif
+
 endmenu
 
 menu "On-chip Peripheral Drivers"
