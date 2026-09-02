@@ -15,6 +15,7 @@
 #include "n32h49x_cfg.h"
 #include "n32h49x_exti.h"
 #include "misc.h"
+#include "n32h49x_i2c.h"
 #include "n32h49x_dma.h"
 #include "n32h49x_pwr.h"
 #include "n32h49x_dbg.h"

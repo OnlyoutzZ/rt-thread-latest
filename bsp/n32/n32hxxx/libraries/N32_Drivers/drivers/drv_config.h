@@ -39,6 +39,7 @@ extern "C" {
 #include "h49x/dac_config.h"
 #include "h49x/can_config.h"
 #include "h49x/spi_config.h"
+#include "h49x/i2c_hard_config.h"
 #elif defined(SOC_SERIES_N32H47x_48x)
 #include "h47x_48x/dma_config.h"
 #include "h47x_48x/uart_config.h"
@@ -46,6 +47,7 @@ extern "C" {
 #include "h47x_48x/dac_config.h"
 #include "h47x_48x/can_config.h"
 #include "h47x_48x/spi_config.h"
+#include "h47x_48x/i2c_hard_config.h"
 #endif /* defined(SOC_SERIES_N32H7xx) */
 
 #ifdef __cplusplus

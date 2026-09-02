@@ -228,6 +228,68 @@ menu "On-chip Peripheral Drivers"
         bool "Enable on-chip FLASH"
         default n
 
+    menuconfig BSP_USING_HARD_I2C
+        bool "Enable Hard I2C BUS"
+        default n
+        select RT_USING_I2C
+        if BSP_USING_HARD_I2C
+            config BSP_USING_HARD_I2C1
+                bool "Enable I2C1 BUS"
+                default n
+
+            config BSP_I2C1_RX_USING_DMA
+                bool "Enable I2C1 RX DMA"
+                depends on BSP_USING_HARD_I2C1
+                default n
+
+            config BSP_I2C1_TX_USING_DMA
+                bool "Enable i2c1 TX DMA"
+                depends on BSP_USING_HARD_I2C1
+                default n
+
+            config BSP_USING_HARD_I2C2
+                bool "Enable I2C2 BUS"
+                default n
+
+            config BSP_I2C2_RX_USING_DMA
+                bool "Enable I2C2 RX DMA"
+                depends on BSP_USING_HARD_I2C2
+                default n
+
+            config BSP_I2C2_TX_USING_DMA
+                bool "Enable i2c2 TX DMA"
+                depends on BSP_USING_HARD_I2C2
+                default n
+
+            config BSP_USING_HARD_I2C3
+                bool "Enable I2C3 BUS"
+                default n
+
+            config BSP_I2C3_RX_USING_DMA
+                bool "Enable I2C3 RX DMA"
+                depends on BSP_USING_HARD_I2C3
+                default n
+
+            config BSP_I2C3_TX_USING_DMA
+                bool "Enable i2c3 TX DMA"
+                depends on BSP_USING_HARD_I2C3
+                default n
+
+            config BSP_USING_HARD_I2C4
+                bool "Enable I2C4 BUS"
+                default n
+
+            config BSP_I2C4_RX_USING_DMA
+                bool "Enable I2C4 RX DMA"
+                depends on BSP_USING_HARD_I2C4
+                default n
+
+            config BSP_I2C4_TX_USING_DMA
+                bool "Enable i2c4 TX DMA"
+                depends on BSP_USING_HARD_I2C4
+                default n
+        endif
+
     menuconfig BSP_USING_ONCHIP_RTC
     bool "Enable RTC"
     select RT_USING_RTC
