@@ -1,11 +1,11 @@
 /*
- * Copyright (c) 2006-2025, RT-Thread Development Team
+ * Copyright (c) 2006-2021, RT-Thread Development Team
  *
  * SPDX-License-Identifier: Apache-2.0
  *
  * Change Logs:
- * Date           Author           Notes
- * 2026-06-28     ox-horse         first version
+ * Date           Author       Notes
+ * 2022-05-16     shelton      first version
  */
 
 #include "drv_sdio.h"
@@ -13,21 +13,23 @@
 
 #ifdef BSP_USING_SDIO
 
-#define ALIGN(n) __attribute__((aligned(n)))
+#define ALIGN(n)   __attribute__((aligned(n)))
 
 // #define DRV_DEBUG
-#define LOG_TAG "drv.sdio"
+#define LOG_TAG             "drv.sdio"
 #include <drv_log.h>
 #include "board.h"
 #include "drv_config.h"
+
+
 
 static struct n32_sdio_config sdio_config = SDIO_BUS_CONFIG;
 static struct n32_sdio_class sdio_obj;
 static struct rt_mmcsd_host *host;
 
-#define SDIO_TX_RX_COMPLETE_TIMEOUT_LOOPS (1000000)
+#define SDIO_TX_RX_COMPLETE_TIMEOUT_LOOPS    (1000000)
 
-#define RT_HW_SDIO_LOCK(_sdio)   rt_mutex_take(&_sdio->mutex, RT_WAITING_FOREVER)
+#define RT_HW_SDIO_LOCK(_sdio) rt_mutex_take(&_sdio->mutex, RT_WAITING_FOREVER)
 #define RT_HW_SDIO_UNLOCK(_sdio) rt_mutex_release(&_sdio->mutex);
 
 struct sdio_pkg
@@ -110,7 +112,7 @@ static int get_order(rt_uint32_t data)
     case 16384:
         order = 14;
         break;
-    default:
+    default :
         order = 0;
         break;
     }
@@ -133,8 +135,8 @@ static void rt_hw_sdio_wait_completed(struct rt_hw_sdio *sdio)
     if (rt_event_recv(&sdio->event, 0xffffffff, RT_EVENT_FLAG_OR | RT_EVENT_FLAG_CLEAR,
                       rt_tick_from_millisecond(5000), &status) != RT_EOK)
     {
-        LOG_E("wait completed timeout, cmd:%d, arg:0x%08x, rw:%c, len:%d",
-              cmd->cmd_code, cmd->arg,
+        LOG_E("wait completed timeout, cmd:%d, arg:0x%08x, rw:%c, len:%d", 
+              cmd->cmd_code, cmd->arg, 
               data ? (data->flags & DATA_DIR_WRITE ? 'w' : 'r') : '-',
               data ? data->blks * data->blksize : 0);
         cmd->err = -RT_ETIMEOUT;
@@ -187,16 +189,17 @@ static void rt_hw_sdio_wait_completed(struct rt_hw_sdio *sdio)
                   status,
                   cmd->cmd_code,
                   cmd->arg,
-                  data ? (data->flags & DATA_DIR_WRITE ? 'w' : 'r') : '-',
+                  data ? (data->flags & DATA_DIR_WRITE ?  'w' : 'r') : '-',
                   data ? data->blks * data->blksize : 0,
-                  data ? data->blksize : 0);
-            LOG_E("Error flags: %s%s%s%s%s%s",
-                  status & HW_SDIO_IT_CCRCFAIL ? "CCRCFAIL " : "",
-                  status & HW_SDIO_IT_DCRCFAIL ? "DCRCFAIL " : "",
-                  status & HW_SDIO_IT_CTIMEOUT ? "CTIMEOUT " : "",
-                  status & HW_SDIO_IT_DTIMEOUT ? "DTIMEOUT " : "",
-                  status & HW_SDIO_IT_TXUNDERR ? "TXUNDERR " : "",
-                  status & HW_SDIO_IT_RXOVERR ? "RXOVERR " : "");
+                  data ? data->blksize : 0
+                 );
+            LOG_E("Error flags: %s%s%s%s%s%s", 
+                  status & HW_SDIO_IT_CCRCFAIL  ? "CCRCFAIL "    : "",
+                  status & HW_SDIO_IT_DCRCFAIL  ? "DCRCFAIL "    : "",
+                  status & HW_SDIO_IT_CTIMEOUT  ? "CTIMEOUT "    : "",
+                  status & HW_SDIO_IT_DTIMEOUT  ? "DTIMEOUT "    : "",
+                  status & HW_SDIO_IT_TXUNDERR  ? "TXUNDERR "    : "",
+                  status & HW_SDIO_IT_RXOVERR   ? "RXOVERR "     : "");
         }
     }
     else
@@ -244,7 +247,7 @@ static void rt_hw_sdio_transfer_by_dma(struct rt_hw_sdio *sdio, struct sdio_pkg 
     if (data->flags & DATA_DIR_WRITE)
     {
         sdio->sdio_des.txconfig((rt_uint32_t *)buff, (rt_uint32_t *)&hw_sdio->fifo, size);
-        hw_sdio->dctrl |= HW_SDIO_DMA_ENABLE;
+        hw_sdio->dctrl |= HW_SDIO_DMA_ENABLE ;
     }
     else if (data->flags & DATA_DIR_READ)
     {
@@ -272,33 +275,28 @@ static void rt_hw_sdio_send_command(struct rt_hw_sdio *sdio, struct sdio_pkg *pk
     LOG_D("CMD:%d ARG:0x%08x RES:%s%s%s%s%s%s%s%s%s rw:%c len:%d blksize:%d",
           cmd->cmd_code,
           cmd->arg,
-          resp_type(cmd) == RESP_NONE ? "NONE" : "",
-          resp_type(cmd) == RESP_R1 ? "R1" : "",
-          resp_type(cmd) == RESP_R1B ? "R1B" : "",
-          resp_type(cmd) == RESP_R2 ? "R2" : "",
-          resp_type(cmd) == RESP_R3 ? "R3" : "",
-          resp_type(cmd) == RESP_R4 ? "R4" : "",
-          resp_type(cmd) == RESP_R5 ? "R5" : "",
-          resp_type(cmd) == RESP_R6 ? "R6" : "",
-          resp_type(cmd) == RESP_R7 ? "R7" : "",
-          data ? (data->flags & DATA_DIR_WRITE ? 'w' : 'r') : '-',
+          resp_type(cmd) == RESP_NONE ? "NONE"  : "",
+          resp_type(cmd) == RESP_R1  ? "R1"  : "",
+          resp_type(cmd) == RESP_R1B ? "R1B"  : "",
+          resp_type(cmd) == RESP_R2  ? "R2"  : "",
+          resp_type(cmd) == RESP_R3  ? "R3"  : "",
+          resp_type(cmd) == RESP_R4  ? "R4"  : "",
+          resp_type(cmd) == RESP_R5  ? "R5"  : "",
+          resp_type(cmd) == RESP_R6  ? "R6"  : "",
+          resp_type(cmd) == RESP_R7  ? "R7"  : "",
+          data ? (data->flags & DATA_DIR_WRITE ?  'w' : 'r') : '-',
           data ? data->blks * data->blksize : 0,
-          data ? data->blksize : 0);
+          data ? data->blksize : 0
+         );
 
     /* config cmd reg */
     reg_cmd = (cmd->cmd_code) << 8 | HW_SDIO_CPSM_ENABLE;
     if (resp_type(cmd) == RESP_NONE)
-    {
         reg_cmd |= HW_SDIO_RESPONSE_NO;
-    }
     else if (resp_type(cmd) == RESP_R2)
-    {
         reg_cmd |= HW_SDIO_RESPONSE_LONG;
-    }
     else
-    {
         reg_cmd |= HW_SDIO_RESPONSE_SHORT;
-    }
 
     /* config data reg */
     if (data != RT_NULL)
@@ -312,7 +310,7 @@ static void rt_hw_sdio_send_command(struct rt_hw_sdio *sdio, struct sdio_pkg *pk
         hw_sdio->dlen = size;
         order = get_order(data->blksize);
         dir = (data->flags & DATA_DIR_READ) ? HW_SDIO_TO_HOST : 0;
-        /* HW_SDIO_IO_ENABLE | */
+        /* HW_SDIO_IO_ENABLE | */ 
         hw_sdio->dctrl = (order << 8) | dir;
     }
 
@@ -339,19 +337,21 @@ static void rt_hw_sdio_send_command(struct rt_hw_sdio *sdio, struct sdio_pkg *pk
     /* waiting for data to be sent to completion */
     if (data != RT_NULL)
     {
-        volatile rt_uint32_t count = SDIO_TX_RX_COMPLETE_TIMEOUT_LOOPS;
+         volatile rt_uint32_t count = SDIO_TX_RX_COMPLETE_TIMEOUT_LOOPS;
 
-        while (count && (hw_sdio->sta & (HW_SDIO_IT_TXACT | HW_SDIO_IT_RXACT)))
-        {
-            count--;
-        }
+         while (count && (hw_sdio->sta & (HW_SDIO_IT_TXACT | HW_SDIO_IT_RXACT)))
+         {
+             count--;
+         }
 
-        if ((count == 0) || (hw_sdio->sta & HW_SDIO_ERRORS))
-        {
-            cmd->err = -RT_ERROR;
-        }
+         if ((count == 0) || (hw_sdio->sta & HW_SDIO_ERRORS))
+         {
+             cmd->err = -RT_ERROR;
+         }
     }
 
+
+    
     /* close irq, keep sdio irq */
     hw_sdio->mask = hw_sdio->mask & HW_SDIO_IT_SDIOIT ? HW_SDIO_IT_SDIOIT : 0x00;
 
@@ -436,10 +436,7 @@ static void rt_hw_sdio_iocfg(struct rt_mmcsd_host *host, struct rt_mmcsd_io_cfg 
         return;
     }
 
-    if (clk > host->freq_max)
-    {
-        clk = host->freq_max;
-    }
+    if (clk > host->freq_max) clk = host->freq_max;
 
     if (clk > clk_src)
     {
@@ -447,18 +444,19 @@ static void rt_hw_sdio_iocfg(struct rt_mmcsd_host *host, struct rt_mmcsd_io_cfg 
         clk = clk_src;
     }
 
-    LOG_D("clk:%d width:%s%s%s power:%s%s%s",
+    LOG_I("clk:%d width:%s%s%s power:%s%s%s",
           clk,
           io_cfg->bus_width == MMCSD_BUS_WIDTH_8 ? "8" : "",
           io_cfg->bus_width == MMCSD_BUS_WIDTH_4 ? "4" : "",
           io_cfg->bus_width == MMCSD_BUS_WIDTH_1 ? "1" : "",
           io_cfg->power_mode == MMCSD_POWER_OFF ? "OFF" : "",
           io_cfg->power_mode == MMCSD_POWER_UP ? "UP" : "",
-          io_cfg->power_mode == MMCSD_POWER_ON ? "ON" : "");
+          io_cfg->power_mode == MMCSD_POWER_ON ? "ON" : ""
+         );
 
     RT_HW_SDIO_LOCK(sdio);
 
-    div = clk_src / (clk * 2);
+    div = clk_src / (clk*2);
     if ((clk == 0) || (div == 0))
     {
         clkcr = 0;
@@ -671,7 +669,8 @@ void rt_hw_sdio_irq_process(struct rt_mmcsd_host *host)
     }
 }
 
-static const struct rt_mmcsd_host_ops ops = {
+static const struct rt_mmcsd_host_ops ops =
+{
     rt_hw_sdio_request,
     rt_hw_sdio_iocfg,
     rt_hw_sd_delect,
@@ -693,7 +692,8 @@ struct rt_mmcsd_host *sdio_host_create(struct n32_sdio_des *sdio_des)
         LOG_E("L:%d F:%s %s %s %s",
               (sdio_des == RT_NULL ? "sdio_des is NULL" : ""),
               (sdio_des ? (sdio_des->txconfig ? "txconfig is NULL" : "") : ""),
-              (sdio_des ? (sdio_des->rxconfig ? "rxconfig is NULL" : "") : ""));
+              (sdio_des ? (sdio_des->rxconfig ? "rxconfig is NULL" : "") : "")
+             );
         return RT_NULL;
     }
 
@@ -725,10 +725,10 @@ struct rt_mmcsd_host *sdio_host_create(struct n32_sdio_des *sdio_des)
     host->freq_min = 400 * 1000;
     host->freq_max = SDIO_MAX_FREQ;
     host->valid_ocr = 0X00FFFF80;/* the voltage range supported is 1.65v-3.6v */
-#ifndef SDIO_USING_1_BIT
-    host->flags = MMCSD_BUSWIDTH_4 | MMCSD_MUTBLKWRITE | MMCSD_SUP_SDIO_IRQ;
-#else
+#ifdef BSP_USING_SDIO_1BIT
     host->flags = MMCSD_MUTBLKWRITE | MMCSD_SUP_SDIO_IRQ;
+#else
+    host->flags = MMCSD_BUSWIDTH_4 | MMCSD_MUTBLKWRITE | MMCSD_SUP_SDIO_IRQ;
 #endif
     host->max_seg_size = SDIO_BUFF_SIZE;
     host->max_dma_segs = 1;
@@ -747,6 +747,7 @@ struct rt_mmcsd_host *sdio_host_create(struct n32_sdio_des *sdio_des)
     return host;
 }
 
+
 /**
   * @brief  this function configures the dmatx.
   * @param  src: pointer to the source buffer
@@ -756,32 +757,34 @@ struct rt_mmcsd_host *sdio_host_create(struct n32_sdio_des *sdio_des)
   */
 void sd_lowlevel_dmatx_config(uint32_t *src, uint32_t *dst, uint32_t buffer_size)
 {
+    
     sdio_obj.cfg = &sdio_config;
-
+    
     DMA_StructInit(&sdio_obj.dma.handle_tx);
-
+    
     /*!< DMA2 Channel2 disable */
     DMA_EnableChannel(sdio_config.dma_tx.DMAChx, DISABLE);
 
-    DMA_DeInit(sdio_config.dma_tx.DMAChx);
+    DMA_DeInit(sdio_config.dma_tx.DMAChx);     
     /*!< DMA2 Channel2 Config */
-    sdio_obj.dma.handle_tx.PeriphAddr = (uint32_t)dst;
-    sdio_obj.dma.handle_tx.MemAddr = (uint32_t)src;
-    sdio_obj.dma.handle_tx.Direction = DMA_DIR_PERIPH_DST;
-    sdio_obj.dma.handle_tx.BufSize = buffer_size;
-    sdio_obj.dma.handle_tx.PeriphInc = DMA_PERIPH_INC_DISABLE;
-    sdio_obj.dma.handle_tx.MemoryInc = DMA_MEM_INC_ENABLE;
+    sdio_obj.dma.handle_tx.PeriphAddr     = (uint32_t)dst;
+    sdio_obj.dma.handle_tx.MemAddr        = (uint32_t)src;
+    sdio_obj.dma.handle_tx.Direction      = DMA_DIR_PERIPH_DST;     
+    sdio_obj.dma.handle_tx.BufSize        = buffer_size;
+    sdio_obj.dma.handle_tx.PeriphInc      = DMA_PERIPH_INC_DISABLE; 
+    sdio_obj.dma.handle_tx.MemoryInc      = DMA_MEM_INC_ENABLE;
     sdio_obj.dma.handle_tx.PeriphDataSize = DMA_PERIPH_DATA_WIDTH_WORD;
-    sdio_obj.dma.handle_tx.MemDataSize = DMA_MEM_DATA_WIDTH_WORD;
-    sdio_obj.dma.handle_tx.CircularMode = DMA_MODE_NORMAL;
-    sdio_obj.dma.handle_tx.Priority = DMA_PRIORITY_HIGH;
-    sdio_obj.dma.handle_tx.Mem2Mem = DMA_M2M_DISABLE;
-
+    sdio_obj.dma.handle_tx.MemDataSize    = DMA_MEM_DATA_WIDTH_WORD;
+    sdio_obj.dma.handle_tx.CircularMode   = DMA_MODE_NORMAL;
+    sdio_obj.dma.handle_tx.Priority       = DMA_PRIORITY_HIGH;
+    sdio_obj.dma.handle_tx.Mem2Mem        = DMA_M2M_DISABLE;
+    
+    
     DMA_Init(sdio_config.dma_tx.DMAChx, &sdio_obj.dma.handle_tx);
 
     /* DMA channel remap */
-    DMA_RequestRemap(sdio_config.dma_tx.request, sdio_config.dma_tx.DMAChx, ENABLE);
-
+    DMA_RequestRemap(sdio_config.dma_tx.request,sdio_config.dma_tx.DMAChx,ENABLE);  
+    
     /*!< SDIO DMA TX Channel enable */
     DMA_EnableChannel(sdio_config.dma_tx.DMAChx, ENABLE);
 }
@@ -796,34 +799,35 @@ void sd_lowlevel_dmatx_config(uint32_t *src, uint32_t *dst, uint32_t buffer_size
 void sd_lowlevel_dmarx_config(uint32_t *src, uint32_t *dst, uint32_t buffer_size)
 {
     sdio_obj.cfg = &sdio_config;
-
+    
     DMA_StructInit(&sdio_obj.dma.handle_rx);
 
     /*!< DMA2 Channel2 disable */
     DMA_EnableChannel(sdio_config.dma_rx.DMAChx, DISABLE);
 
-    DMA_DeInit(sdio_config.dma_rx.DMAChx);
+    DMA_DeInit(sdio_config.dma_rx.DMAChx);    
     /*!< DMA2 Channel2 Config */
     sdio_obj.dma.handle_rx.PeriphAddr = (uint32_t)src;
-    sdio_obj.dma.handle_rx.MemAddr = (uint32_t)dst;
-    sdio_obj.dma.handle_rx.Direction = DMA_DIR_PERIPH_SRC;
-    sdio_obj.dma.handle_rx.BufSize = buffer_size;
-    sdio_obj.dma.handle_rx.PeriphInc = DMA_PERIPH_INC_DISABLE;
-    sdio_obj.dma.handle_rx.MemoryInc = DMA_MEM_INC_ENABLE;
-    sdio_obj.dma.handle_rx.PeriphDataSize = DMA_PERIPH_DATA_WIDTH_WORD;
+    sdio_obj.dma.handle_rx.MemAddr    = (uint32_t)dst;         
+    sdio_obj.dma.handle_rx.Direction  = DMA_DIR_PERIPH_SRC;    
+    sdio_obj.dma.handle_rx.BufSize    = buffer_size;             
+    sdio_obj.dma.handle_rx.PeriphInc  = DMA_PERIPH_INC_DISABLE; 
+    sdio_obj.dma.handle_rx.MemoryInc = DMA_MEM_INC_ENABLE;  
+    sdio_obj.dma.handle_rx.PeriphDataSize = DMA_PERIPH_DATA_WIDTH_WORD; 
     sdio_obj.dma.handle_rx.MemDataSize = DMA_MEM_DATA_WIDTH_WORD;
-    sdio_obj.dma.handle_rx.CircularMode = DMA_MODE_NORMAL;
-    sdio_obj.dma.handle_rx.Priority = DMA_PRIORITY_HIGH;
-    sdio_obj.dma.handle_rx.Mem2Mem = DMA_M2M_DISABLE;
+    sdio_obj.dma.handle_rx.CircularMode = DMA_MODE_NORMAL; 
+    sdio_obj.dma.handle_rx.Priority = DMA_PRIORITY_HIGH;  
+    sdio_obj.dma.handle_rx.Mem2Mem  = DMA_M2M_DISABLE;    
 
     DMA_Init(sdio_config.dma_rx.DMAChx, &sdio_obj.dma.handle_rx);
 
     /* DMA channel remap */
-    DMA_RequestRemap(sdio_config.dma_rx.request, sdio_config.dma_rx.DMAChx, ENABLE);
-
+    DMA_RequestRemap(sdio_config.dma_rx.request,sdio_config.dma_rx.DMAChx,ENABLE);  
+    
     /*!< SDIO DMA RX Channel enable */
     DMA_EnableChannel(sdio_config.dma_rx.DMAChx, ENABLE);
 }
+
 
 /**
   * @brief  this function get n32 sdio clock.
@@ -862,16 +866,17 @@ void SDIO_IRQHandler(void)
     rt_interrupt_leave();
 }
 
+
 int rt_hw_sdio_init(void)
 {
     struct n32_sdio_des sdio_des;
-
+    
     /* Enable DMA clock */
-    RCC_EnableAHBPeriphClk(sdio_config.dma_tx.dma_rcc | sdio_config.dma_rx.dma_rcc, ENABLE);
-
+    RCC_EnableAHBPeriphClk(sdio_config.dma_tx.dma_rcc|sdio_config.dma_rx.dma_rcc, ENABLE);
+    
     uint32_t group = NVIC_GetPriorityGrouping();
     rt_kprintf("Current Priority Group: %lu\n", group);
-
+    
     NVIC_SetPriority(SDIO_IRQn, NVIC_EncodePriority(NVIC_GetPriorityGrouping(), 1, 0));
     NVIC_EnableIRQ(SDIO_IRQn);
 

@@ -139,8 +139,14 @@ extern "C" {
 #define SDIO_RX_DMA_IRQ           DMA1_Channel6_IRQn
 #define SDIO_TX_DMA_RCC           RCC_AHB_PERIPHEN_DMA1
 #define SDIO_RX_DMA_RCC           RCC_AHB_PERIPHEN_DMA1
+#if defined(SOC_SERIES_N32H49x) 
 #define SDIO_TX_DMA_REQUEST       DMA_REMAP_SDIO
 #define SDIO_RX_DMA_REQUEST       DMA_REMAP_SDIO
+#elif defined(SOC_SERIES_N32H47x_48x)
+#define SDIO_TX_DMA_REQUEST       DMA_REMAP_SDIO_DMA
+#define SDIO_RX_DMA_REQUEST       DMA_REMAP_SDIO_DMA
+#endif
+
 #define SDIO_TX_DMA_CHANNEL       6U
 #define SDIO_RX_DMA_CHANNEL       6U
 #endif
