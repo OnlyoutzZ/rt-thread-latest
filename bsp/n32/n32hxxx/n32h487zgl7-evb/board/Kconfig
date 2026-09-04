@@ -228,6 +228,12 @@ menu "On-chip Peripheral Drivers"
         bool "Enable on-chip FLASH"
         default n
 
+    menuconfig BSP_USING_QSPI
+        bool "Enable QSPI (XSPI) BUS"
+        default n
+        select RT_USING_QSPI
+        select RT_USING_SPI
+
     menuconfig BSP_USING_HARD_I2C
         bool "Enable Hard I2C BUS"
         default n
@@ -672,6 +678,10 @@ menu "On-chip Peripheral Drivers"
                     Number of planes in the NAND flash chip, typically 1 or 2.
         endif
 
+    config BSP_USING_SDIO
+    bool "Enable SDIO"
+    default n  
+    
     source "$BSP_DIR/../libraries/N32_Drivers/drivers/Kconfig"
 
 endmenu

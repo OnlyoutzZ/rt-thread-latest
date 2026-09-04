@@ -337,6 +337,12 @@ menu "On-chip Peripheral Drivers"
         bool "Enable on-chip FLASH"
         default n
 
+    menuconfig BSP_USING_QSPI
+        bool "Enable QSPI (XSPI) BUS"
+        default n
+        select RT_USING_QSPI
+        select RT_USING_SPI
+        
     menuconfig BSP_USING_HARD_I2C
         bool "Enable Hard I2C BUS"
         default n
