@@ -74,7 +74,7 @@ extern "C" {
         .scl_af_width    = 0,                          \
         .sda_af_width    = 0,                          \
         .df_width        = 0,                          \
-        .periph          = RCC_APB1_PERIPHEN_I2C2,  \
+        .periph          = RCC_APB1_PERIPH_I2C2,  \
         .EnablePeriphClk = RCC_EnableAPB1PeriphClk,   \
     }
 #endif /* I2C2_BUS_CONFIG */
@@ -119,7 +119,7 @@ extern "C" {
         .scl_af_width    = 0,                          \
         .sda_af_width    = 0,                          \
         .df_width        = 0,                          \
-        .periph          = RCC_APB1_PERIPHEN_I2C3,  \
+        .periph          = RCC_APB1_PERIPH_I2C3,  \
         .EnablePeriphClk = RCC_EnableAPB1PeriphClk,   \
     }
 #endif /* I2C3_BUS_CONFIG */
@@ -164,7 +164,7 @@ extern "C" {
         .scl_af_width    = 0,                          \
         .sda_af_width    = 0,                          \
         .df_width        = 0,                          \
-        .periph          = RCC_APB1_PERIPHEN_I2C4,  \
+        .periph          = RCC_APB1_PERIPH_I2C4,  \
         .EnablePeriphClk = RCC_EnableAPB1PeriphClk,   \
 
     }
