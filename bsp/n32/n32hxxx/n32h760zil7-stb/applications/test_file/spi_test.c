@@ -23,27 +23,27 @@
  *       4095B DMA single-block limit -> chunking covered)
  *     - aligned: 0 = rt_malloc send buffer (8B aligned -> driver copies to a
  *       32B-aligned buffer, normal path)
- *                1 = __align(32) static array (driver DMA direct-use path:
- *       reproduces the driver bug where full-duplex DMA shares TX/RX buffer,
- *       RX echo overwrites the send source and recv_buf is never copied
- *       back -> compare must FAIL)
+ *                1 = __align(32) static array (driver DMA direct-use path;
+ *       TX/RX buffers stay separate - both alignments are expected PASS)
  *     - rounds: 0 = infinite soak (default); failure auto-stops
  *     - mode: 0..3 = CPOL/CPHA clock mode (default 0)
  *   spi_bat [rounds_each] [speed_khz]
- *     - battery: len={9,4095,4096,8192} x aligned={0,1}, 8 cases
- *       (len=9: master PIO ok, slave PIO returns -EIO by driver design ->
- *       that case expected FAIL, known driver limitation)
+ *     - battery: len={9,4095,4096,8192} x aligned={0,1}, 8 cases; all
+ *       expected PASS in DMA-on builds (len=9: master PIO + slave DMA)
  *   spi_hdu <len> [rounds] [speed_khz] [mode]
  *     - half-duplex 3-wire alternation test. len<10 exercises PIO; len>=10
  *       exercises DMA but note recv-only DMA messages hit the known driver
  *       bug (NULL source/dest) -> expected FAIL / possible hang until the
  *       driver is fixed.
  *   spi_rxonly <len> [rounds] [speed_khz]
- *     - master recv-only vs slave full-duplex (driver-bug probe: master
- *       emits its staging garbage instead of a 0xFF dummy, slave gets no
- *       valid data - known driver limitation, no hard fault).
+ *     - master recv-only vs slave full-duplex. The driver clocks a
+ *       deterministic 0xFF fill on MOSI (DMA leg: static fill buffer as TX
+ *       source; PIO leg: constant writes), so len>=10 (DMA) and len<10 (PIO)
+ *       are expected PASS in DMA-on builds. Only in a no-DMA build does the
+ *       slave's own <10B full-duplex message hit the driver's master-only
+ *       PIO gate (-EIO, slave PIO is unsupported) - expected FAIL there.
  *   spi_all [rounds_each] [speed_khz]
- *     - SPI1(M)/SPI2(S) sequential combination matrix (see spi_all_matrix in
+ *     - current-group sequential combination matrix (see spi_all_matrix in
  *       the code): FD(4-wire) PIO/DMA + aligned 0/1 + clock mode 0..3 sweep,
  *       then HD(3-wire) PIO/DMA alternation. Runs on a single 4-wire
  *       hookup (3-wire uses the MOSI-MOSI net). Known driver defects are
@@ -52,7 +52,7 @@
  *     - stop whichever test is running (current round finishes; worst-case
  *       driver internal timeout is 1000 ticks per 4095B chunk)
  *
- * Wiring:
+ * Wiring, group g0 = SPI1 master <-> SPI2 slave (SPI1 pads PA5/PA7/PA6):
  *   FULL DUPLEX (4-wire; slave soft-NSS always selected, no CS/NSS line):
  *     SPI1.SCK  --> SPI2.SCK
  *     SPI1.MOSI --> SPI2.MOSI   (master data out -> slave data in)
@@ -63,6 +63,17 @@
  *     SPI1.MOSI --> SPI2.MISO   (the single shared data line)
  *     SPI1.MISO / SPI2.MOSI unused/floating
  *     GND common
+ * Wiring, group g1 = SPI3 master <-> SPI4 slave; same-name topology on
+ * SPI3 pads PB2(MOSI)/PB3(SCK)/PB4(MISO), SPI4 pads PG14(MOSI)/PG13(SCK)/
+ * PG12(MISO):
+ *   FULL DUPLEX: PB3<->PG13(SCK)  PB2<->PG14(MOSI)  PB4<->PG12(MISO)  GND
+ *   HALF DUPLEX: PB3<->PG13(SCK)  PB2<->PG12 (master MOSI <-> slave MISO
+ *                single data line), PB4/PG14 floating
+ *   Master/slave is harness configuration only: same-name links work with
+ *   either module driving SCK, rows always declare side A master, B slave.
+ *   Rows compile in only for pairs whose buses are enabled (SPI1&&SPI2 or
+ *   SPI3&&SPI4); the first present row becomes the default group, so a
+ *   single-pair firmware needs no group selector on its commands.
  *   Pin mux is configured externally (Cube_Config), not by this file.
  *
  * Design notes:
@@ -80,7 +91,9 @@
 #include <rtthread.h>
 #include <board.h>
 
-#if defined(RT_USING_SPI) && defined(BSP_USING_SPI1) && defined(BSP_USING_SPI2)
+#if defined(RT_USING_SPI) && \
+    ((defined(BSP_USING_SPI1) && defined(BSP_USING_SPI2)) || \
+     (defined(BSP_USING_SPI3) && defined(BSP_USING_SPI4)))
 
 #include <drivers/dev_spi.h>
 
@@ -102,7 +115,8 @@
 #define SPI_PAIR_SPEED_MAX_KHZ  20000
 
 /* device names are group-row data now (see spi_pair_groups below):
- * group 0 uses master "spi10" on "spi1" and slave "spi20" on "spi2" */
+ * group 0 uses master "spi10" on "spi1" and slave "spi20" on "spi2";
+ * group 1 uses master "spi30" on "spi3" and slave "spi40" on "spi4". */
 
 #if defined(__ARMCC_VERSION) && (__ARMCC_VERSION < 6010050)
 #define SPI_PAIR_ALIGN32        __align(32)
@@ -119,6 +133,8 @@
  */
 #define SPI_PAIR_SPI1_BASE      0x400DC000UL
 #define SPI_PAIR_SPI2_BASE      0x400DC400UL
+#define SPI_PAIR_SPI3_BASE      0x4000E400UL   /* SPI3: APB1 base +0xE400 */
+#define SPI_PAIR_SPI4_BASE      0x58002000UL   /* SPI4: APB5 (0x58000000) +0x2000 */
 
 /* DMA controller/channel register diagnostic (device header:
  * AHB1PERIPH_BASE=0x40040000, DMA1=+0x6800, DMA2=+0x6C00, DMA3=+0x7000;
@@ -128,6 +144,7 @@
  *                                   spi2 TX=DMA1ch7 RX=DMA2ch6 */
 #define SPI_PAIR_DMA1_BASE      0x40046800UL
 #define SPI_PAIR_DMA2_BASE      0x40046C00UL
+#define SPI_PAIR_DMA3_BASE      0x40047000UL   /* DMA3: AHB1PERIPH +0x7000 */
 #define SPI_PAIR_DMA_CH_STEP    0x58UL
 
 /* log mutex: two threads interleave rt_kprintf at char level otherwise.
@@ -151,7 +168,9 @@ static rt_bool_t spi_pair_log_ready = RT_FALSE;
  * A row carries everything that differs between pairs (attach names, reg
  * peek bases, DMA identities, device objects). Commands accept an optional
  * trailing group selector (bare "index" or "--g <name>"); without one the
- * default group 0 - the original spi1(M)<->spi2(S) pair - is used, so all
+ * default is the first row whose pair is enabled in this build (rows are
+ * #if'd on the bus macros), so a single-pair firmware needs no selector
+ * and a multi-pair firmware keeps the original spi1/2 pair first, so all
  * pre-existing invocations parse identically. Adding another wired pair =
  * appending one row; device names must stay unique system-wide. */
 #define SPI_PAIR_DMA_SLOTS      4   /* [0]=A-tx [1]=A-rx [2]=B-tx [3]=B-rx */
@@ -184,6 +203,7 @@ struct spi_pair_group
 
 static struct spi_pair_group spi_pair_groups[] =
 {
+#if defined(BSP_USING_SPI1) && defined(BSP_USING_SPI2)
     {
         .name = "g0",
         .a_bus = "spi1", .a_dev = "spi10",
@@ -198,6 +218,23 @@ static struct spi_pair_group spi_pair_groups[] =
         },
         .caps = SPI_PAIR_GRP_CAP_DM2,
     },
+#endif
+#if defined(BSP_USING_SPI3) && defined(BSP_USING_SPI4)
+    {
+        .name = "g1",
+        .a_bus = "spi3", .a_dev = "spi30",
+        .b_bus = "spi4", .b_dev = "spi40",
+        .a_tag = "spi3(M)", .b_tag = "spi4(S)",
+        .a_base = SPI_PAIR_SPI3_BASE, .b_base = SPI_PAIR_SPI4_BASE,
+        .dma = {
+            { SPI_PAIR_DMA2_BASE, 0, "spi3-TX DMA2ch0" },
+            { SPI_PAIR_DMA2_BASE, 7, "spi3-RX DMA2ch7" },
+            { SPI_PAIR_DMA2_BASE, 1, "spi4-TX DMA2ch1" },
+            { SPI_PAIR_DMA3_BASE, 0, "spi4-RX DMA3ch0" },
+        },
+        .caps = 0,
+    },
+#endif
 };
 #define SPI_PAIR_GROUP_NUM \
     (sizeof(spi_pair_groups) / sizeof(spi_pair_groups[0]))
@@ -1084,9 +1121,9 @@ static void spi_pair_slave_entry(void *param)
         }
         else if (ctx->rxonly)
         {
-            /* expect the 0xFF dummy a recv-only master should send; the DMA
-             * path instead memcpy()s from address 0 (garbage) or hard-faults
-             * -> this compare should fail (driver bug) */
+            /* expect the deterministic 0xFF fill a recv-only master must
+             * send (DMA leg sources the static 0xFF fill buffer, PIO leg
+             * writes a constant 0xFF); any other byte is a driver defect */
             rt_uint32_t i;
 
             for (i = 0; i < ctx->len; i++)
@@ -1104,7 +1141,7 @@ static void spi_pair_slave_entry(void *param)
             {
                 PAIR_LOG("[spi] slave r%u FAIL: expect 0xFF dummy, got non-0xFF@%u"
                          " rx[0..7]=%02x %02x %02x %02x %02x %02x %02x %02x"
-                         " (master recv-only DMA sent garbage, driver bug)\n",
+                         " (master recv-only TX was not 0xFF dummy, driver defect)\n",
                          r, i, ctx->rx_b[0], ctx->rx_b[1], ctx->rx_b[2], ctx->rx_b[3],
                          ctx->rx_b[4], ctx->rx_b[5], ctx->rx_b[6], ctx->rx_b[7]);
                 spi_pair_reg_dump("rxonly", RT_FALSE);
@@ -1337,7 +1374,7 @@ static int spi_pair_run_case(rt_uint32_t len, rt_bool_t aligned, rt_uint32_t rou
         if (rxonly)
         {
             rt_snprintf(desc, sizeof(desc),
-                        "RXONLY(master recv-only, driver-bug probe)");
+                        "RXONLY(master recv-only)");
         }
         else
         {
@@ -1347,13 +1384,13 @@ static int spi_pair_run_case(rt_uint32_t len, rt_bool_t aligned, rt_uint32_t rou
         PAIR_LOG("[spi] %s len=%u mode=%u align=%s khz=%u rounds=%s 8bit %s\n",
                  desc, len, mode, aligned ? "1" : "0", speed_khz,
                  rounds == 0 ? "INF" : "finite",
-                 (len < 10) ? "(PIO: slave -EIO expected = known limitation)"
+                 (len < 10) ? "(PIO leg: <10B is CPU-polled)"
                             : "");
     }
     if (rxonly && len >= 10)
     {
-        PAIR_LOG("[spi] warning: master recv-only DMA memcpy()s NULL source ->"
-                 " may hard fault, reset to recover!\n");
+        PAIR_LOG("[spi] rxonly DMA leg clocks the 0xFF fill (fixed); a FAIL"
+                 " below is a real driver defect\n");
     }
 
     if (spi_pair_spawn(ctx, spi_pair_slave_entry, spi_pair_master_entry) != RT_EOK)
@@ -1883,7 +1920,7 @@ static int spi_all(int argc, char *argv[])
     PAIR_LOG("[spi_all] done (known defects only)\n");
     return RT_EOK;
 }
-MSH_CMD_EXPORT(spi_all, SPI1(M)/SPI2(S) sequential combo matrix FD+HD+modes: spi_all [rounds_each] [khz]);
+MSH_CMD_EXPORT(spi_all, current-group sequential combo matrix FD+HD+modes: spi_all [rounds_each] [khz]);
 
 /* ---------------------- FD 4-wire full matrix (spi_fdall) ----------------------
  * Full-coverage runner for the 4-wire full-duplex DMA path only: every
@@ -2470,4 +2507,4 @@ static int spi_dm2(int argc, char *argv[])
 }
 MSH_CMD_EXPORT(spi_dm2, mode2 demo-replica control: spi_dm2 [len] [rounds] [policy0=warm/1=cold] [khz] [lsb0/1]);
 
-#endif /* RT_USING_SPI && BSP_USING_SPI1 && BSP_USING_SPI2 */
+#endif /* RT_USING_SPI && (SPI1+SPI2 or SPI3+SPI4 pair enabled) */
