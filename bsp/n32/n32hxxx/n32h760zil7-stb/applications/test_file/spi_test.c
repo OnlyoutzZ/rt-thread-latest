@@ -43,11 +43,15 @@
  *       slave's own <10B full-duplex message hit the driver's master-only
  *       PIO gate (-EIO, slave PIO is unsupported) - expected FAIL there.
  *   spi_all [rounds_each] [speed_khz]
- *     - current-group sequential combination matrix (see spi_all_matrix in
- *       the code): FD(4-wire) PIO/DMA + aligned 0/1 + clock mode 0..3 sweep,
- *       then HD(3-wire) PIO/DMA alternation. Runs on a single 4-wire
- *       hookup (3-wire uses the MOSI-MOSI net). Known driver defects are
- *       categorized as "known", unexpected failures are counted separately.
+ *     - current-group sequential combination matrix: FD(4-wire) align 0/1 +
+ *       clock mode 0..3 sweep (expected PASS), then HD(3-wire) PIO/DMA rows
+ *       (observe only). The HD rows need the 3-wire single-data-line hookup
+ *       (master MOSI <-> slave MISO); on a 4-wire hookup that net does not
+ *       exist, so HD rows FAIL there and that is a wiring artifact, not a
+ *       driver verdict - the 3-wire path is judged by spi_3wall on the
+ *       dedicated single-line hookup. Note two former "known defect" classes
+ *       (aligned=1 FD DMA copy-back, len<10 slave -EIO) are fixed in the
+ *       current driver, so they are plain PASS rows now.
  *   spi_pair_stop
  *     - stop whichever test is running (current round finishes; worst-case
  *       driver internal timeout is 1000 ticks per 4095B chunk)
@@ -1768,29 +1772,28 @@ MSH_CMD_EXPORT(spi_bat, spi battery FD (len 9/4095/4096/8192 x aligned 0/1): spi
 
 /* ------------------------- combination matrix (spi_all) ------------------------- */
 
-/* 已知缺陷归类:
- *   KNOWN_ALIGN  : aligned=1 全双工 DMA 直发路径(驱动 bug: 共用 TX/RX 缓冲,
- *                 recv_buf 不拷回) -> 预期 FAIL
- *   KNOWN_PIO_SLV: len<10 全双工时从机中断路径驱动返回 -EIO(已知限制) -> 预期 FAIL
- *   OBSERVE      : 半双工/recv-only DMA 路径(驱动 bug 探测) -> 结果如实记录,
- *                  PASS/FAIL 均不算"意外"
+/* 归类:
+ *   EXPECT_PASS : 4 线全双工行 -> 预期 PASS
+ *   OBSERVE     : 半双工(3-wire)行 -> 需 3W 单线接法(主 MOSI <-> 从 MISO);
+ *                 4 线接法下该网不存在, FAIL 属接法产物 -> 结果如实记录,
+ *                 PASS/FAIL 均不算"意外"
+ * 历史(勿再当缺陷): 早期把 "aligned=1 FD DMA 直发(共用缓冲, recv_buf 不拷回)"
+ * 与 "len<10 全双工 slave PIO -EIO" 记为 known 缺陷(预期 FAIL);两者均已修复
+ * (前者早于 6ae7b60e3d, 后者随 slave 腿恒走 DMA)——2026-09-10 实测该类 6 行
+ * 全部 PASS, 故不再单列 known/false_pass 计数, 也不再有"预期 FAIL"的用例。
  */
 enum spi_all_kind
 {
     SPI_ALL_EXPECT_PASS = 0,
-    SPI_ALL_KNOWN_ALIGN,
-    SPI_ALL_KNOWN_PIO_SLV,
     SPI_ALL_OBSERVE,
 };
 
 struct spi_all_result
 {
     rt_uint32_t pass;
-    rt_uint32_t known_fail;     /* 已知缺陷用例如实 FAIL */
     rt_uint32_t unexpected_fail;
     rt_uint32_t observe_pass;
     rt_uint32_t observe_fail;
-    rt_uint32_t false_pass;     /* 预期 FAIL 却 PASS(说明缺陷已修复, 需人工确认) */
 };
 
 static void spi_all_report_one(const char *phase, const char *desc,
@@ -1801,12 +1804,7 @@ static void spi_all_report_one(const char *phase, const char *desc,
 
     if (res == RT_EOK)
     {
-        if (kind == SPI_ALL_KNOWN_ALIGN || kind == SPI_ALL_KNOWN_PIO_SLV)
-        {
-            agg->false_pass++;
-            verdict = "PASS(unexpected! known-defect case passed)";
-        }
-        else if (kind == SPI_ALL_OBSERVE)
+        if (kind == SPI_ALL_OBSERVE)
         {
             agg->observe_pass++;
             verdict = "PASS(observe)";
@@ -1821,17 +1819,9 @@ static void spi_all_report_one(const char *phase, const char *desc,
     {
         switch (kind)
         {
-        case SPI_ALL_KNOWN_ALIGN:
-            agg->known_fail++;
-            verdict = "FAIL(known: aligned FD DMA shared-buffer bug)";
-            break;
-        case SPI_ALL_KNOWN_PIO_SLV:
-            agg->known_fail++;
-            verdict = "FAIL(known: slave PIO <10B -EIO limitation)";
-            break;
         case SPI_ALL_OBSERVE:
             agg->observe_fail++;
-            verdict = "FAIL(observe: HD/recv-only driver probe)";
+            verdict = "FAIL(observe: needs the 3-wire single-line hookup)";
             break;
         default:
             agg->unexpected_fail++;
@@ -1860,7 +1850,7 @@ static int spi_all(int argc, char *argv[])
     if (spi_pair_group_apply(argc, argv, 2) != RT_EOK) return -RT_ERROR;
     rt_memset(&agg, 0, sizeof(agg));
     PAIR_LOG("===== spi_all: %s<->%s combination matrix (rounds=%u khz=%u)"
-             " 4-wire wiring; HD uses MOSI net =====\n",
+             " 4-wire hookup; HD rows need the 3-wire single-line hookup =====\n",
              spi_pair_cur_g->a_tag, spi_pair_cur_g->b_tag, rounds, khz);
 
     /* Phase A: FD(4-wire) length/aligned matrix */
@@ -1878,10 +1868,7 @@ static int spi_all(int argc, char *argv[])
                             lens[li], ai ? "1" : "0");
                 res = spi_pair_run_case(lens[li], (rt_bool_t)ai, rounds, khz, 0, RT_FALSE,
                                    8u, RT_FALSE);
-                spi_all_report_one("A-FD", desc,
-                                   (ai && lens[li] >= 10) ? SPI_ALL_KNOWN_ALIGN :
-                                   (lens[li] < 10) ? SPI_ALL_KNOWN_PIO_SLV : SPI_ALL_EXPECT_PASS,
-                                   res, &agg);
+                spi_all_report_one("A-FD", desc, SPI_ALL_EXPECT_PASS, res, &agg);
             }
         }
     }
@@ -1930,26 +1917,28 @@ static int spi_all(int argc, char *argv[])
         }
     }
 
-    PAIR_LOG("===== spi_all summary: pass=%u known_fail=%u unexpected_fail=%u"
-             " observe(PASS/FAIL)=%u/%u false_pass=%u =====\n",
-             agg.pass, agg.known_fail, agg.unexpected_fail,
-             agg.observe_pass, agg.observe_fail, agg.false_pass);
+    PAIR_LOG("===== spi_all summary: pass=%u unexpected_fail=%u"
+             " observe(PASS/FAIL)=%u/%u =====\n",
+             agg.pass, agg.unexpected_fail,
+             agg.observe_pass, agg.observe_fail);
 
-    if (agg.unexpected_fail != 0 || agg.false_pass != 0)
+    if (agg.unexpected_fail != 0)
     {
-        PAIR_LOG("[spi_all] NEEDS ATTENTION: unexpected fail or false pass above!\n");
+        PAIR_LOG("[spi_all] NEEDS ATTENTION: unexpected fail above!\n");
         return -RT_ERROR;
     }
-    PAIR_LOG("[spi_all] done (known defects only)\n");
+    PAIR_LOG("[spi_all] done (no unexpected failures; HD rows are wiring-bound)\n");
     return RT_EOK;
 }
 MSH_CMD_EXPORT(spi_all, current-group sequential combo matrix FD+HD+modes: spi_all [rounds_each] [khz]);
 
 /* ---------------------- FD 4-wire full matrix (spi_fdall) ----------------------
  * Full-coverage runner for the 4-wire full-duplex DMA path only: every
- * combination of mode 0..3 x len {9..8192} x aligned {0,1}. len<10 (slave
- * PIO path -EIO) is a known driver limitation and reported as observe only;
- * aligned=1 FD was fixed in the DMA regression (expect PASS). */
+ * combination of mode 0..3 x len {9..8192} x aligned {0,1}. All rows are
+ * expected PASS in the current driver (len<10 now rides the slave's always-DMA
+ * leg, so the old slave-PIO -EIO limitation no longer applies; aligned=1 FD was
+ * fixed in the DMA regression). A len<10 failure would still be reported as
+ * observe rather than "unexpected". */
 
 static int spi_fdall(int argc, char *argv[])
 {
