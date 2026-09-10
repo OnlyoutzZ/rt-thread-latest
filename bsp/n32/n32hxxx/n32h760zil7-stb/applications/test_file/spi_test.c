@@ -31,10 +31,10 @@
  *     - battery: len={9,4095,4096,8192} x aligned={0,1}, 8 cases; all
  *       expected PASS in DMA-on builds (len=9: master PIO + slave DMA)
  *   spi_hdu <len> [rounds] [speed_khz] [mode]
- *     - half-duplex 3-wire alternation test. len<10 exercises PIO; len>=10
- *       exercises DMA but note recv-only DMA messages hit the known driver
- *       bug (NULL source/dest) -> expected FAIL / possible hang until the
- *       driver is fixed.
+ *     - half-duplex 3-wire alternation test. The master send leg (AB) polls
+ *       with PIO below 10 elements; the master recv leg (BA) goes through
+ *       DMA at every length (driver rule since 2026-09-10 - the PIO poll
+ *       raced the free-running RX clock). Both legs expected PASS.
  *   spi_rxonly <len> [rounds] [speed_khz]
  *     - master recv-only vs slave full-duplex. The driver clocks a
  *       deterministic 0xFF fill on MOSI (DMA leg: static fill buffer as TX
@@ -1610,6 +1610,29 @@ static void spi_hdu_master_entry(void *param)
 
 /* ------------------------- HALF DUPLEX: runner ------------------------- */
 
+/* Engine annotation for the 3-wire rows. The driver polls with PIO only for
+ * the master SEND leg (AB) below 10 elements; the master RECV leg (BA) goes
+ * through DMA at every length (driver rule since 2026-09-10: the PIO poll
+ * raced the free-running RX clock and stored partially shifted bytes, see
+ * the master recv-only dispatch note in drv_spi.c spixfer). A leg set that
+ * contains BA is therefore DMA for the BA part. */
+static const char *spi_3w_xfer_kind(rt_uint32_t len, rt_uint32_t legs)
+{
+    if (len >= 10u)
+    {
+        return "(DMA)";
+    }
+    if (legs == 1u)
+    {
+        return "(PIO)";
+    }
+    if (legs == 2u)
+    {
+        return "(DMA)";
+    }
+    return "(AB:PIO,BA:DMA)";
+}
+
 static int spi_hdu_run_case(rt_uint32_t len, rt_uint32_t rounds,
                             rt_uint32_t speed_khz, rt_uint32_t mode,
                             rt_uint32_t legs, rt_int32_t mode_b)
@@ -1634,7 +1657,7 @@ static int spi_hdu_run_case(rt_uint32_t len, rt_uint32_t rounds,
              "legs=%u %s\n",
              len, mode, (mode_b >= 0) ? "+b" : "", speed_khz,
              rounds == 0 ? "INF" : "finite",
-             legs, (len < 10) ? "(PIO)" : "(DMA)");
+             legs, spi_3w_xfer_kind(len, legs));
     if (mode_b >= 0)
     {
         PAIR_LOG("[spi]   slave mode override: %d (diag)\n", mode_b);
@@ -2015,7 +2038,7 @@ static int spi_3wall_run_row(rt_uint32_t len, rt_bool_t aligned,
     ctx->legs = legs;           /* 1 = AB master send, 2 = BA master recv */
     PAIR_LOG("[spi] 3WALL len=%u mode=%u align=%s leg=%s khz=%u rounds=%u %s\n",
              len, mode, aligned ? "1" : "0", legs == 1u ? "AB" : "BA",
-             khz, rounds, (len < 10) ? "(PIO)" : "(DMA)");
+             khz, rounds, spi_3w_xfer_kind(len, legs));
     if (spi_pair_spawn(ctx, spi_hdu_slave_entry, spi_hdu_master_entry) != RT_EOK)
     {
         return -RT_ERROR;
