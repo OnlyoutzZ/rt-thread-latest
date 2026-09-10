@@ -559,6 +559,17 @@ static rt_err_t spi_pair_attach(struct spi_pair_ctx *ctx)
 {
     struct spi_pair_group *g = ctx->g;
 
+    if (g == RT_NULL)
+    {
+        /* A command that forgot to sync ctx->g from spi_pair_cur_g would
+         * otherwise read g->attached through a NULL group (garbage, usually
+         * "already attached"), return success, and then hand &g->dev_a --
+         * a pointer into the NULL page -- to rt_spi_configure, which dies on
+         * rt_mutex_take of a make-believe bus lock: RT_ASSERT spin, dead
+         * console, power cycle needed (measured 2026-09-10 on spi_dm2). */
+        PAIR_LOG("[spi] no group selected!\n");
+        return -RT_ERROR;
+    }
     if (g->attached)
     {
         return RT_EOK;
@@ -2382,6 +2393,10 @@ static int spi_dm2(int argc, char *argv[])
     }
 
     spi_pair_ctx_reset(ctx);
+    ctx->g = spi_pair_cur_g;    /* group selection is command-layer state
+                                   (reset deliberately keeps it, so every
+                                   command must sync it -- see attach's
+                                   NULL-group guard) */
     ctx->tag = "DM2";
     ctx->len = len;
     ctx->rounds = rounds;
