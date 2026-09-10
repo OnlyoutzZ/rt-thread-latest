@@ -97,7 +97,8 @@
 
 #if defined(RT_USING_SPI) && \
     ((defined(BSP_USING_SPI1) && defined(BSP_USING_SPI2)) || \
-     (defined(BSP_USING_SPI3) && defined(BSP_USING_SPI4)))
+     (defined(BSP_USING_SPI3) && defined(BSP_USING_SPI4)) || \
+     (defined(BSP_USING_SPI5) && defined(BSP_USING_SPI6)))
 
 #include <drivers/dev_spi.h>
 
@@ -120,7 +121,8 @@
 
 /* device names are group-row data now (see spi_pair_groups below):
  * group 0 uses master "spi10" on "spi1" and slave "spi20" on "spi2";
- * group 1 uses master "spi30" on "spi3" and slave "spi40" on "spi4". */
+ * group 1 uses master "spi30" on "spi3" and slave "spi40" on "spi4";
+ * group 2 uses master "spi50" on "spi5" and slave "spi60" on "spi6". */
 
 #if defined(__ARMCC_VERSION) && (__ARMCC_VERSION < 6010050)
 #define SPI_PAIR_ALIGN32        __align(32)
@@ -139,17 +141,32 @@
 #define SPI_PAIR_SPI2_BASE      0x400DC400UL
 #define SPI_PAIR_SPI3_BASE      0x4000E400UL   /* SPI3: APB1 base +0xE400 */
 #define SPI_PAIR_SPI4_BASE      0x58002000UL   /* SPI4: APB5 (0x58000000) +0x2000 */
+#define SPI_PAIR_SPI5_BASE      0x58002400UL   /* SPI5: APB5 +0x2400 (n32h7xx.h) */
+#define SPI_PAIR_SPI6_BASE      0x58002800UL   /* SPI6: APB5 +0x2800 (n32h7xx.h) */
 
 /* DMA controller/channel register diagnostic (device header:
  * AHB1PERIPH_BASE=0x40040000, DMA1=+0x6800, DMA2=+0x6C00, DMA3=+0x7000;
  * channel block stride 0x58: SA@0x00 DA@0x08 CTRL@0x18(64b) CFG@0x40(64b);
  * controller: RAWTCINTSTS@0x2C0 TCINTMSK@0x310 RAWERRINTSTS@0x2E0 CHEN@0x3A0)
  * Involved channels of this test: spi1 TX=DMA1ch6 RX=DMA2ch5,
- *                                   spi2 TX=DMA1ch7 RX=DMA2ch6 */
+ *                                   spi2 TX=DMA1ch7 RX=DMA2ch6
+ *   group rows carry their own channel list (spi_pair_groups[].dma); e.g.
+ *   g1 spi3 TX=DMA2ch0 RX=DMA2ch7, spi4 TX=DMA2ch1 RX=DMA3ch0
+ *   g2 spi5 TX=DMA2ch2 RX=DMA3ch1, spi6 TX=DMA2ch3 RX=DMA3ch2 */
 #define SPI_PAIR_DMA1_BASE      0x40046800UL
 #define SPI_PAIR_DMA2_BASE      0x40046C00UL
 #define SPI_PAIR_DMA3_BASE      0x40047000UL   /* DMA3: AHB1PERIPH +0x7000 */
 #define SPI_PAIR_DMA_CH_STEP    0x58UL
+
+/* GPIO PID (pad input data, port +0x10) registers used by the dm2 wire probe.
+ * N32H76x AHB5 GPIOA = 0x58032800, step 0x400 per port (see GPIO_GET_INDEX). */
+#define SPI_PAIR_PID_A  0x58032810UL
+#define SPI_PAIR_PID_B  0x58032C10UL
+#define SPI_PAIR_PID_C  0x58033010UL
+#define SPI_PAIR_PID_D  0x58033410UL
+#define SPI_PAIR_PID_E  0x58033810UL
+#define SPI_PAIR_PID_F  0x58033C10UL
+#define SPI_PAIR_PID_G  0x58034010UL
 
 /* log mutex: two threads interleave rt_kprintf at char level otherwise.
  * Lazy init: every command path (incl. early error returns before the run
@@ -178,13 +195,20 @@ static rt_bool_t spi_pair_log_ready = RT_FALSE;
  * pre-existing invocations parse identically. Adding another wired pair =
  * appending one row; device names must stay unique system-wide. */
 #define SPI_PAIR_DMA_SLOTS      4   /* [0]=A-tx [1]=A-rx [2]=B-tx [3]=B-rx */
-#define SPI_PAIR_GRP_CAP_DM2    0x01u /* row may run spi_dm2 (pins+module bound) */
+#define SPI_PAIR_GRP_CAP_DM2    0x01u /* row may run spi_dm2 (a_spi/b_spi + wire[] bound) */
 
 struct spi_pair_dma_slot
 {
     rt_uint32_t ctrl_base;          /* DMA1/DMA2 controller base */
     rt_uint8_t  ch;                 /* channel 0..7 */
     const char *label;              /* print identity "spi1-TX DMA1ch6" */
+};
+
+struct spi_pair_wire_pin
+{
+    rt_uint32_t pid;                /* GPIO PID register (+0x10) of the pad */
+    rt_uint8_t  bit;
+    const char *pin;                /* log label, e.g. "PA5" */
 };
 
 struct spi_pair_group
@@ -200,6 +224,13 @@ struct spi_pair_group
     rt_uint32_t b_base;             /* SPI CTRL1 base, slave side */
     struct spi_pair_dma_slot dma[SPI_PAIR_DMA_SLOTS];
     rt_uint32_t caps;               /* 0 = matrix commands only */
+    /* dm2 register-probe binding.  The probe drives SPI_Init()/SPI_I2S_DeInit()
+     * on the vendor module handles directly, so the row has to carry them; and
+     * it samples the pad-level PID of each net, so the pads are row data too.
+     * Index order: 0=sck_a 1=sck_b 2=mosi_a 3=mosi_b 4=miso_a 5=miso_b. */
+    SPI_Module *a_spi;              /* vendor handle, master side */
+    SPI_Module *b_spi;              /* vendor handle, slave side */
+    struct spi_pair_wire_pin wire[6];
     struct rt_spi_device dev_a;     /* master device: attached once, persistent */
     struct rt_spi_device dev_b;     /* slave device: attached once, persistent */
     rt_bool_t attached;
@@ -221,6 +252,15 @@ static struct spi_pair_group spi_pair_groups[] =
             { SPI_PAIR_DMA2_BASE, 6, "spi2-RX DMA2ch6" },
         },
         .caps = SPI_PAIR_GRP_CAP_DM2,
+        .a_spi = SPI1, .b_spi = SPI2,
+        .wire = {
+            { SPI_PAIR_PID_A,  5, "PA5" },   /* SPI1.SCK  (master out) */
+            { SPI_PAIR_PID_D,  3, "PD3" },   /* SPI2.SCK  (slave in)   */
+            { SPI_PAIR_PID_A,  7, "PA7" },   /* SPI1.MOSI */
+            { SPI_PAIR_PID_C,  3, "PC3" },   /* SPI2.MOSI */
+            { SPI_PAIR_PID_A,  6, "PA6" },   /* SPI1.MISO */
+            { SPI_PAIR_PID_C,  2, "PC2" },   /* SPI2.MISO */
+        },
     },
 #endif
 #if defined(BSP_USING_SPI3) && defined(BSP_USING_SPI4)
@@ -236,7 +276,44 @@ static struct spi_pair_group spi_pair_groups[] =
             { SPI_PAIR_DMA2_BASE, 1, "spi4-TX DMA2ch1" },
             { SPI_PAIR_DMA3_BASE, 0, "spi4-RX DMA3ch0" },
         },
+        /* dm2 binding present but the cap is off: g1 has never been wired up
+         * for the register probe, so no claim is made.  Enabling it is this
+         * one word once g1 is hooked up and run. */
         .caps = 0,
+        .a_spi = SPI3, .b_spi = SPI4,
+        .wire = {
+            { SPI_PAIR_PID_B,  3, "PB3" },   /* SPI3.SCK  (master out) */
+            { SPI_PAIR_PID_G, 13, "PG13" },  /* SPI4.SCK  (slave in)   */
+            { SPI_PAIR_PID_B,  2, "PB2" },   /* SPI3.MOSI */
+            { SPI_PAIR_PID_G, 14, "PG14" },  /* SPI4.MOSI */
+            { SPI_PAIR_PID_B,  4, "PB4" },   /* SPI3.MISO */
+            { SPI_PAIR_PID_G, 12, "PG12" },  /* SPI4.MISO */
+        },
+    },
+#endif
+#if defined(BSP_USING_SPI5) && defined(BSP_USING_SPI6)
+    {
+        .name = "g2",
+        .a_bus = "spi5", .a_dev = "spi50",
+        .b_bus = "spi6", .b_dev = "spi60",
+        .a_tag = "spi5(M)", .b_tag = "spi6(S)",
+        .a_base = SPI_PAIR_SPI5_BASE, .b_base = SPI_PAIR_SPI6_BASE,
+        .dma = {
+            { SPI_PAIR_DMA2_BASE, 2, "spi5-TX DMA2ch2" },
+            { SPI_PAIR_DMA3_BASE, 1, "spi5-RX DMA3ch1" },
+            { SPI_PAIR_DMA2_BASE, 3, "spi6-TX DMA2ch3" },
+            { SPI_PAIR_DMA3_BASE, 2, "spi6-RX DMA3ch2" },
+        },
+        .caps = SPI_PAIR_GRP_CAP_DM2,
+        .a_spi = SPI5, .b_spi = SPI6,
+        .wire = {
+            { SPI_PAIR_PID_F,  7, "PF7" },   /* SPI5.SCK  (master out) */
+            { SPI_PAIR_PID_E,  2, "PE2" },   /* SPI6.SCK  (slave in)   */
+            { SPI_PAIR_PID_F,  9, "PF9" },   /* SPI5.MOSI */
+            { SPI_PAIR_PID_E,  6, "PE6" },   /* SPI6.MOSI */
+            { SPI_PAIR_PID_F,  8, "PF8" },   /* SPI5.MISO */
+            { SPI_PAIR_PID_E,  5, "PE5" },   /* SPI6.MISO */
+        },
     },
 #endif
 };
@@ -412,7 +489,12 @@ static void spi_pair_dma_ch_dump(rt_uint32_t ctrl_base, rt_uint32_t ch,
     rt_uint32_t tmask = *(volatile rt_uint32_t *)(ctrl_base + 0x310);
     rt_uint32_t rawerr = *(volatile rt_uint32_t *)(ctrl_base + 0x2E0);
 
-    PAIR_LOG("[%s] DMA %s: SA=0x%08x DA=0x%08x CTRL=0x%08x CFGl=0x%08x CFGh=0x%08x"
+    /* one string specifier only: the old "[%s] DMA %s:" pair had no second
+     * string argument, so SA was printed through %s (garbage, and every later
+     * conversion was shifted by one argument -- RAWERR read a stray vararg).
+     * The garbage was cosmetic (never used for a verdict) but it made these
+     * dump lines unreadable and un-diffable. */
+    PAIR_LOG("[%s] DMA: SA=0x%08x DA=0x%08x CTRL=0x%08x CFGl=0x%08x CFGh=0x%08x"
              " CHEN=%u RAWTC=%u TCMSK=%u RAWERR=%u\n",
              name,
              (unsigned)sa, (unsigned)da,
@@ -631,6 +713,31 @@ static rt_err_t spi_pair_config(struct spi_pair_ctx *ctx)
         return -RT_ERROR;
     }
     return RT_EOK;
+}
+
+/* Configure, but make sure the driver's init path REALLY runs.
+ *
+ * rt_spi_configure() returns early when data_width/mode/max_hz all match what
+ * the device already holds (see dev_spi_core.c "If the configurations are the
+ * same, we don't need to set again").  Every other command only cares about
+ * the settings being live, so the skip is invisible; spi_dm2 is not like that:
+ * it pokes CTRL1/CTRL2/DAT behind the driver's back, so a second dm2 run with
+ * an unchanged configuration would start from the previous run's leftovers
+ * instead of a driver-initialised peripheral -- measured on g2: identical
+ * back-to-back "spi_dm2 512 3 0 1000 0 g2" PASS then FAIL x4, and any
+ * intervening command that changes the configuration restores it.
+ *
+ * Flipping ctx->lsb for one throwaway call guarantees the two configurations
+ * differ, so the second call always takes the full DeInit+Init path.  The
+ * throwaway value is never used to run a transfer. */
+static rt_err_t spi_pair_config_cold(struct spi_pair_ctx *ctx)
+{
+    rt_bool_t lsb = ctx->lsb;
+
+    ctx->lsb = !lsb;                    /* any config-visible change works */
+    (void)spi_pair_config(ctx);
+    ctx->lsb = lsb;
+    return spi_pair_config(ctx);
 }
 
 /* reset run parameters only; ctx->g (group) and row device objects survive */
@@ -2215,6 +2322,9 @@ MSH_CMD_EXPORT(spi_pair_stop, stop running spi pair test);
  * MSB 8-bit (changeable below via salt/mode only by editing).
  *   policy 0 = demo replica: engines enabled once, never cycled (warm)
  *   policy 1 = driver replica: SPIEN cold 0->1 before every round
+ * Runs on the selected group (trailing token) as long as that row carries
+ * SPI_PAIR_GRP_CAP_DM2: the module handles it resets/re-inits and the pads it
+ * samples both come from the row, nothing is hardwired to a pair.
  * Registers (see header comment L108): CTRL2@+0x04 SPIEN=bit0;
  * STS@+0x08 TE=bit0 RNE=bit1; DAT@+0x0C. */
 #define SPI_DM2_POLL_MAX        500000u
@@ -2272,23 +2382,23 @@ static void spi_dm2_engine(rt_bool_t m_on, rt_bool_t s_on)
 }
 
 /* ---- wire-level probes: PID (pad input data) of the SPI net pins ----
- * GPIO PID@+0x10. Bases (N32H76x AHB5): GPIOA 0x58032800, GPIOC 0x58033000,
- * GPIOD 0x58033400. Pins: PA5=SPI1.SCK(master out, bit5), PA7=MOSI(bit7),
- * PA6=MISO(bit6), PD3=SPI2.SCK(slave in, bit3), PC3=SPI2.MOSI(bit3),
- * PC2=SPI2.MISO(bit2). */
-#define SPI_DM2_PID_A  0x58032810UL
-#define SPI_DM2_PID_C  0x58033010UL
-#define SPI_DM2_PID_D  0x58033410UL
-
+ * The pads are row data (spi_pair_groups[].wire), so the probe follows the
+ * current group instead of assuming g0's pinout. */
 static void spi_dm2_wire_probe(const char *tag)
 {
-    rt_uint32_t a = *(volatile rt_uint32_t *)SPI_DM2_PID_A;
-    rt_uint32_t c = *(volatile rt_uint32_t *)SPI_DM2_PID_C;
-    rt_uint32_t d = *(volatile rt_uint32_t *)SPI_DM2_PID_D;
+    const struct spi_pair_wire_pin *w = spi_pair_cur_g->wire;
+    rt_uint32_t v[6];
+    rt_uint32_t i;
 
-    PAIR_LOG("[dm2] wire %-4s SCK PA5=%u PD3=%u | MOSI PA7=%u PC3=%u | MISO PA6=%u PC2=%u\n",
-             tag, (a >> 5) & 1u, (d >> 3) & 1u, (a >> 7) & 1u, (c >> 3) & 1u,
-             (a >> 6) & 1u, (c >> 2) & 1u);
+    for (i = 0; i < 6; i++)
+    {
+        v[i] = (*(volatile rt_uint32_t *)w[i].pid >> w[i].bit) & 1u;
+    }
+    PAIR_LOG("[dm2] wire %-4s SCK %s=%u %s=%u | MOSI %s=%u %s=%u | MISO %s=%u %s=%u\n",
+             tag,
+             w[0].pin, (unsigned)v[0], w[1].pin, (unsigned)v[1],
+             w[2].pin, (unsigned)v[2], w[3].pin, (unsigned)v[3],
+             w[4].pin, (unsigned)v[4], w[5].pin, (unsigned)v[5]);
 }
 
 /* print first failing line (rx vs expect) of one direction, 8 bytes each */
@@ -2317,13 +2427,17 @@ static void spi_dm2_fail_dump(const char *who, rt_uint32_t r, rt_uint32_t diff,
 }
 
 /* vendor-demo per-case setup replica: RCC-reset both SPIs, vendor SPI_Init
- * (mode2, soft NSS, /256, 8-bit FD), then slave->master enable = cold order */
+ * (mode2, soft NSS, /256, 8-bit FD), then slave->master enable = cold order.
+ * Both modules come from the current group's row, so this replays the demo on
+ * whatever pair is selected (SPI_I2S_DeInit/SPI_Init are module-agnostic). */
 static void spi_dm2_demo_setup(rt_bool_t lsb)
 {
     SPI_InitType st;
+    SPI_Module *a = spi_pair_cur_g->a_spi;
+    SPI_Module *b = spi_pair_cur_g->b_spi;
 
-    SPI_I2S_DeInit(SPI1);
-    SPI_I2S_DeInit(SPI2);
+    SPI_I2S_DeInit(a);
+    SPI_I2S_DeInit(b);
     SPI_InitStruct(&st);
     st.DataDirection = SPI_DIR_DOUBLELINE_FULLDUPLEX;
     st.SpiMode       = SPI_MODE_MASTER;
@@ -2334,15 +2448,15 @@ static void spi_dm2_demo_setup(rt_bool_t lsb)
     st.BaudRatePres  = SPI_BR_PRESCALER_256;
     st.FirstBit      = lsb ? SPI_FB_LSB : SPI_FB_MSB;
     st.CRCPoly       = 7;
-    SPI_Init(SPI1, &st);
+    SPI_Init(a, &st);
     st.SpiMode = SPI_MODE_SLAVE;
-    SPI_Init(SPI2, &st);
+    SPI_Init(b, &st);
     spi_dm2_wire_probe("ini2");     /* engines off right after vendor init */
     spi_pair_reg_dump("p2ini", RT_TRUE);
     spi_pair_reg_dump("p2ini", RT_FALSE);
-    SPI_Enable(SPI2, ENABLE);
+    SPI_Enable(b, ENABLE);
     spi_dm2_wire_probe("slvon");
-    SPI_Enable(SPI1, ENABLE);
+    SPI_Enable(a, ENABLE);
     spi_dm2_wire_probe("bothon");
 }
 
@@ -2367,8 +2481,8 @@ static int spi_dm2(int argc, char *argv[])
     if (spi_pair_group_apply(argc, argv, 5) != RT_EOK) return -RT_ERROR;
     if ((spi_pair_cur_g->caps & SPI_PAIR_GRP_CAP_DM2) == 0u)
     {
-        PAIR_LOG("[dm2] register-level probe only supported on %s\n",
-                 spi_pair_groups[0].name);
+        PAIR_LOG("[dm2] register-level probe not bound on group '%s'"
+                 " (row lacks SPI_PAIR_GRP_CAP_DM2)\n", spi_pair_cur_g->name);
         return -RT_ERROR;
     }
     if (spi_pair_running)
@@ -2404,7 +2518,7 @@ static int spi_dm2(int argc, char *argv[])
     ctx->spi_mode = 2;
     ctx->lsb = (lsb != 0);
     if (spi_pair_attach(ctx) != RT_EOK ||
-        spi_pair_config(ctx) != RT_EOK ||
+        spi_pair_config_cold(ctx) != RT_EOK ||
         spi_pair_buf_prepare(ctx) != RT_EOK)
     {
         return -RT_ERROR;
@@ -2532,6 +2646,6 @@ static int spi_dm2(int argc, char *argv[])
     }
     return RT_EOK;
 }
-MSH_CMD_EXPORT(spi_dm2, mode2 demo-replica control: spi_dm2 [len] [rounds] [policy0=warm/1=cold] [khz] [lsb0/1]);
+MSH_CMD_EXPORT(spi_dm2, mode2 demo-replica control: spi_dm2 [len] [rounds] [policy0=warm/1=cold] [khz] [lsb0/1] [group]);
 
 #endif /* RT_USING_SPI && (SPI1+SPI2 or SPI3+SPI4 pair enabled) */
