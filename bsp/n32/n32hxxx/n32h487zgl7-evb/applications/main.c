@@ -32,38 +32,38 @@
  *   XSPI_IO2    PF7     AF9
  *   XSPI_IO3    PF6     AF9
  */
-#define XSPI_FLASH_NSS_PIN    (GPIO_PIN_0)
-#define XSPI_FLASH_NSS_PORT   (GPIOF)
-#define XSPI_FLASH_NSS_AF     (GPIO_AF9)
+#define XSPI_FLASH_NSS_PIN  (GPIO_PIN_0)
+#define XSPI_FLASH_NSS_PORT (GPIOF)
+#define XSPI_FLASH_NSS_AF   (GPIO_AF9)
 
-#define XSPI_FLASH_SCK_PIN    (GPIO_PIN_10)
-#define XSPI_FLASH_SCK_PORT   (GPIOF)
-#define XSPI_FLASH_SCK_AF     (GPIO_AF9)
+#define XSPI_FLASH_SCK_PIN  (GPIO_PIN_10)
+#define XSPI_FLASH_SCK_PORT (GPIOF)
+#define XSPI_FLASH_SCK_AF   (GPIO_AF9)
 
-#define XSPI_FLASH_D0_PIN     (GPIO_PIN_8)
-#define XSPI_FLASH_D0_PORT    (GPIOF)
-#define XSPI_FLASH_D0_AF      (GPIO_AF9)
+#define XSPI_FLASH_D0_PIN  (GPIO_PIN_8)
+#define XSPI_FLASH_D0_PORT (GPIOF)
+#define XSPI_FLASH_D0_AF   (GPIO_AF9)
 
-#define XSPI_FLASH_D1_PIN     (GPIO_PIN_9)
-#define XSPI_FLASH_D1_PORT    (GPIOF)
-#define XSPI_FLASH_D1_AF      (GPIO_AF9)
+#define XSPI_FLASH_D1_PIN  (GPIO_PIN_9)
+#define XSPI_FLASH_D1_PORT (GPIOF)
+#define XSPI_FLASH_D1_AF   (GPIO_AF9)
 
-#define XSPI_FLASH_D2_PIN     (GPIO_PIN_7)
-#define XSPI_FLASH_D2_PORT    (GPIOF)
-#define XSPI_FLASH_D2_AF      (GPIO_AF9)
+#define XSPI_FLASH_D2_PIN  (GPIO_PIN_7)
+#define XSPI_FLASH_D2_PORT (GPIOF)
+#define XSPI_FLASH_D2_AF   (GPIO_AF9)
 
-#define XSPI_FLASH_D3_PIN     (GPIO_PIN_6)
-#define XSPI_FLASH_D3_PORT    (GPIOF)
-#define XSPI_FLASH_D3_AF      (GPIO_AF9)
+#define XSPI_FLASH_D3_PIN  (GPIO_PIN_6)
+#define XSPI_FLASH_D3_PORT (GPIOF)
+#define XSPI_FLASH_D3_AF   (GPIO_AF9)
 
 /* SCK = Fssi_clk / (QSPI_BAUDR * 2), adjust to your system clock (driver applies BAUD = baudr<<1) */
-#define QSPI_BAUDR            80
+#define QSPI_BAUDR 80
 
 /* P25Q40H JEDEC ID (85 60 13) */
-#define W25Q_CMD_READ_JEDEC_ID    0x9F
-#define P25Q40_JEDEC_ID           0x00856013
+#define W25Q_CMD_READ_JEDEC_ID 0x9F
+#define P25Q40_JEDEC_ID        0x00856013
 
-#define QSPI_W25Q_DEVICE_NAME     "qspi10"
+#define QSPI_W25Q_DEVICE_NAME "qspi10"
 
 struct rt_qspi_message msg;
 struct rt_qspi_device *qspi_dev;
@@ -71,55 +71,53 @@ struct rt_qspi_configuration qspi_cfg;
 
 static void QSPI_GPIO_Configuration(void)
 {
-    
     /* GPIOA, GPIOC, GPIOD clock enable */
-    RCC_EnableAHB1PeriphClk(RCC_AHB_PERIPHEN_GPIOA|RCC_AHB_PERIPHEN_GPIOC|RCC_AHB_PERIPHEN_GPIOD ,ENABLE);
-    RCC_EnableAPB2PeriphClk(RCC_APB2_PERIPH_AFIO,ENABLE);
-    
+    RCC_EnableAHB1PeriphClk(RCC_AHB_PERIPHEN_GPIOA | RCC_AHB_PERIPHEN_GPIOC | RCC_AHB_PERIPHEN_GPIOD, ENABLE);
+    RCC_EnableAPB2PeriphClk(RCC_APB2_PERIPH_AFIO, ENABLE);
+
     /* XSPI clock enable */
     RCC_EnableAHBPeriphClk(RCC_AHB_PERIPHEN_XSPI, ENABLE);
-    
+
     GPIO_InitType GPIO_InitStructure;
 
     /* Initialize GPIO_InitStructure */
     GPIO_InitStruct(&GPIO_InitStructure);
-    /* Confugure NSS0 pins */   
-    GPIO_InitStructure.Pin       = GPIO_PIN_3;
+    /* Confugure NSS0 pins */
+    GPIO_InitStructure.Pin = GPIO_PIN_3;
     GPIO_InitStructure.GPIO_Mode = GPIO_MODE_AF_PP;
     GPIO_InitStructure.GPIO_Slew_Rate = GPIO_SR_SLOW_SLEW;
     GPIO_InitStructure.GPIO_Alternate = GPIO_AF9;
     GPIO_InitStructure.GPIO_Current = GPIO_DC_12mA;
     GPIO_InitPeripheral(GPIOD, &GPIO_InitStructure);
-			
+
     /* Confugure SCK pin  */
-    GPIO_InitStructure.Pin       = GPIO_PIN_5;
+    GPIO_InitStructure.Pin = GPIO_PIN_5;
     GPIO_InitStructure.GPIO_Alternate = GPIO_AF9;
     GPIO_InitPeripheral(GPIOA, &GPIO_InitStructure);
-    
+
     /* Confugure IO0\IO1 pin  */
-    GPIO_InitStructure.Pin       = GPIO_PIN_6| GPIO_PIN_7;
+    GPIO_InitStructure.Pin = GPIO_PIN_6 | GPIO_PIN_7;
     GPIO_InitStructure.GPIO_Alternate = GPIO_AF15;
     GPIO_InitPeripheral(GPIOA, &GPIO_InitStructure);
-    
+
     /* Confugure IO2\IO3 pin  */
-    GPIO_InitStructure.Pin       = GPIO_PIN_4 | GPIO_PIN_5;
+    GPIO_InitStructure.Pin = GPIO_PIN_4 | GPIO_PIN_5;
     GPIO_InitStructure.GPIO_Alternate = GPIO_AF9;
     GPIO_InitPeripheral(GPIOC, &GPIO_InitStructure);
 }
 
-static struct n32_xspi_config _w25q_xspi_cfg =
-{
-    .scph              = XSPI_CTRL0_SCPH_FIRST_EDGE,        /* SPI mode 0 */
-    .scpol             = XSPI_CTRL0_SCPOL_LOW,
-    .role              = XSPI_Mode_Master,
-    .frame_format      = XSPI_CTRL0_SPIFRF_STANDARD_FORMAT, /* standard SPI (single line) */
-    .data_frame_size   = XSPI_CTRL0_DFS_8_BIT,
-    .transfer_mode     = XSPI_CTRL0_TMOD_TX_AND_RX,
-    .baudr             = QSPI_BAUDR,
+static struct n32_xspi_config _w25q_xspi_cfg = {
+    .scph = XSPI_CTRL0_SCPH_FIRST_EDGE,        /* SPI mode 0 */
+    .scpol = XSPI_CTRL0_SCPOL_LOW,
+    .role = XSPI_Mode_Master,
+    .frame_format = XSPI_CTRL0_SPIFRF_STANDARD_FORMAT, /* standard SPI (single line) */
+    .data_frame_size = XSPI_CTRL0_DFS_8_BIT,
+    .transfer_mode = XSPI_CTRL0_TMOD_TX_AND_RX,
+    .baudr = QSPI_BAUDR,
     .rxd_sampling_edge = 0,
-    .rxd_sample_delay  = 0,
-    .nss_toggle        = 0,                                 /* SSTE disabled */
-    .slave_sel         = XSPI_SLAVE_EN_SEN_0,               /* NSS0 -> PD3 */
+    .rxd_sample_delay = 0,
+    .nss_toggle = 0,                                 /* SSTE disabled */
+    .slave_sel = XSPI_SLAVE_EN_SEN_0,               /* NSS0 -> PD3 */
 };
 
 static int qspi_w25q_attach(void)
@@ -147,17 +145,17 @@ void GPIO_HD_WP_Configuration(void)
     GPIO_InitStruct(&GPIO_InitStructure);
 
     /* Confugure IO2 WP pin  */
-    GPIO_InitStructure.Pin       = GPIO_PIN_4;
+    GPIO_InitStructure.Pin = GPIO_PIN_4;
     GPIO_InitStructure.GPIO_Mode = GPIO_MODE_OUTPUT_PP;
     GPIO_InitStructure.GPIO_Slew_Rate = GPIO_SR_SLOW_SLEW;
     GPIO_InitStructure.GPIO_Alternate = GPIO_NO_AF;
     GPIO_InitStructure.GPIO_Current = GPIO_DC_12mA;
     GPIO_InitPeripheral(GPIOC, &GPIO_InitStructure);
-    
+
     /* Confugure IO3 HD pin  */
-    GPIO_InitStructure.Pin       = GPIO_PIN_5;
+    GPIO_InitStructure.Pin = GPIO_PIN_5;
     GPIO_InitPeripheral(GPIOC, &GPIO_InitStructure);
-    
+
     GPIO_WriteBits(GPIOC, GPIO_PIN_4, Bit_SET);
     GPIO_WriteBits(GPIOC, GPIO_PIN_5, Bit_SET);
 }
@@ -172,30 +170,30 @@ static void GPIO_HD_WP_AF_Configuration(void)
     /* Initialize GPIO_InitStructure */
     GPIO_InitStruct(&GPIO_InitStructure);
 
-    GPIO_InitStructure.Pin            = GPIO_PIN_4 | GPIO_PIN_5;
-    GPIO_InitStructure.GPIO_Mode      = GPIO_MODE_AF_PP;
+    GPIO_InitStructure.Pin = GPIO_PIN_4 | GPIO_PIN_5;
+    GPIO_InitStructure.GPIO_Mode = GPIO_MODE_AF_PP;
     GPIO_InitStructure.GPIO_Slew_Rate = GPIO_SR_SLOW_SLEW;
     GPIO_InitStructure.GPIO_Alternate = GPIO_AF9;
-    GPIO_InitStructure.GPIO_Current   = GPIO_DC_12mA;
+    GPIO_InitStructure.GPIO_Current = GPIO_DC_12mA;
     GPIO_InitPeripheral(GPIOC, &GPIO_InitStructure);
 }
 
 static void Flash_ENABLE_test(void)
 {
     rt_uint8_t fwe = 0x06;
-    rt_uint8_t send_reg1[2] = {0x05, 0xFF};
-    rt_uint8_t read_reg1[2] = {0x00, 0x00};
+    rt_uint8_t send_reg1[2] = { 0x05, 0xFF };
+    rt_uint8_t read_reg1[2] = { 0x00, 0x00 };
 
     rt_memset(&msg, 0, sizeof(msg));
 
     msg.instruction.qspi_lines = 1;
-    msg.qspi_data_lines        = 1;
-    msg.parent.send_buf        = &fwe;
-    msg.parent.recv_buf        = RT_NULL;
-    msg.parent.length          = 1;
-    msg.parent.cs_take         = 1;
-    msg.parent.cs_release      = 1;
-    msg.parent.next            = RT_NULL;
+    msg.qspi_data_lines = 1;
+    msg.parent.send_buf = &fwe;
+    msg.parent.recv_buf = RT_NULL;
+    msg.parent.length = 1;
+    msg.parent.cs_take = 1;
+    msg.parent.cs_release = 1;
+    msg.parent.next = RT_NULL;
 
     if (rt_qspi_transfer_message(qspi_dev, &msg) != 1)
     {
@@ -207,13 +205,13 @@ static void Flash_ENABLE_test(void)
         rt_memset(&msg, 0, sizeof(msg));
 
         msg.instruction.qspi_lines = 1;
-        msg.qspi_data_lines        = 1;
-        msg.parent.send_buf        = send_reg1;
-        msg.parent.recv_buf        = read_reg1;
-        msg.parent.length          = 2;
-        msg.parent.cs_take         = 1;
-        msg.parent.cs_release      = 1;
-        msg.parent.next            = RT_NULL;
+        msg.qspi_data_lines = 1;
+        msg.parent.send_buf = send_reg1;
+        msg.parent.recv_buf = read_reg1;
+        msg.parent.length = 2;
+        msg.parent.cs_take = 1;
+        msg.parent.cs_release = 1;
+        msg.parent.next = RT_NULL;
 
         if (rt_qspi_transfer_message(qspi_dev, &msg) != 2)
         {
@@ -224,21 +222,21 @@ static void Flash_ENABLE_test(void)
 
 static void Flash_Check_Busy_TEST(void)
 {
-    rt_uint8_t send_reg1[2] = {0x05, 0xFF};
-    rt_uint8_t read_reg1[2] = {0x00, 0x00};
+    rt_uint8_t send_reg1[2] = { 0x05, 0xFF };
+    rt_uint8_t read_reg1[2] = { 0x00, 0x00 };
 
     do
     {
         rt_memset(&msg, 0, sizeof(msg));
 
         msg.instruction.qspi_lines = 1;
-        msg.qspi_data_lines        = 1;
-        msg.parent.send_buf        = send_reg1;
-        msg.parent.recv_buf        = read_reg1;
-        msg.parent.length          = 2;
-        msg.parent.cs_take         = 1;
-        msg.parent.cs_release      = 1;
-        msg.parent.next            = RT_NULL;
+        msg.qspi_data_lines = 1;
+        msg.parent.send_buf = send_reg1;
+        msg.parent.recv_buf = read_reg1;
+        msg.parent.length = 2;
+        msg.parent.cs_take = 1;
+        msg.parent.cs_release = 1;
+        msg.parent.next = RT_NULL;
 
         if (rt_qspi_transfer_message(qspi_dev, &msg) != 2)
         {
@@ -249,7 +247,7 @@ static void Flash_Check_Busy_TEST(void)
 
 static void Flash_Sector_Erase_TEST(uint32_t SectorAddr)
 {
-    rt_uint8_t bufw[4] = {0};
+    rt_uint8_t bufw[4] = { 0 };
 
     Flash_ENABLE_test();
 
@@ -261,13 +259,13 @@ static void Flash_Sector_Erase_TEST(uint32_t SectorAddr)
     bufw[3] = SectorAddr & 0xff;
 
     msg.instruction.qspi_lines = 1;
-    msg.qspi_data_lines        = 1;
-    msg.parent.send_buf        = bufw;
-    msg.parent.recv_buf        = RT_NULL;
-    msg.parent.length          = 4;
-    msg.parent.cs_take         = 1;
-    msg.parent.cs_release      = 1;
-    msg.parent.next            = RT_NULL;
+    msg.qspi_data_lines = 1;
+    msg.parent.send_buf = bufw;
+    msg.parent.recv_buf = RT_NULL;
+    msg.parent.length = 4;
+    msg.parent.cs_take = 1;
+    msg.parent.cs_release = 1;
+    msg.parent.next = RT_NULL;
 
     if (rt_qspi_transfer_message(qspi_dev, &msg) != 4)
     {
@@ -279,8 +277,8 @@ static void Flash_Sector_Erase_TEST(uint32_t SectorAddr)
 
 static void Flash_Quad_Mode_Enable(void)
 {
-    uint8_t bufw[4] = {0};
-    uint8_t bufr[4] = {0};
+    uint8_t bufw[4] = { 0 };
+    uint8_t bufr[4] = { 0 };
 
     Flash_ENABLE_test();
 
@@ -291,13 +289,13 @@ static void Flash_Quad_Mode_Enable(void)
         bufw[0] = 0x31;   /* Write Status Register-1 */
         bufw[1] = 0x02;   /* QE = S9 = bit1 */
         msg.instruction.qspi_lines = 1;
-        msg.qspi_data_lines        = 1;
-        msg.parent.send_buf        = bufw;
-        msg.parent.recv_buf        = RT_NULL;
-        msg.parent.length          = 2;
-        msg.parent.cs_take         = 1;
-        msg.parent.cs_release      = 1;
-        msg.parent.next            = RT_NULL;
+        msg.qspi_data_lines = 1;
+        msg.parent.send_buf = bufw;
+        msg.parent.recv_buf = RT_NULL;
+        msg.parent.length = 2;
+        msg.parent.cs_take = 1;
+        msg.parent.cs_release = 1;
+        msg.parent.next = RT_NULL;
 
         if (rt_qspi_transfer_message(qspi_dev, &msg) != 2)
         {
@@ -309,13 +307,13 @@ static void Flash_Quad_Mode_Enable(void)
         bufw[0] = 0x35;   /* Read Status Register-1 */
         bufw[1] = 0x00;
         msg.instruction.qspi_lines = 1;
-        msg.qspi_data_lines        = 1;
-        msg.parent.send_buf        = bufw;
-        msg.parent.recv_buf        = bufr;
-        msg.parent.length          = 2;
-        msg.parent.cs_take         = 1;
-        msg.parent.cs_release      = 1;
-        msg.parent.next            = RT_NULL;
+        msg.qspi_data_lines = 1;
+        msg.parent.send_buf = bufw;
+        msg.parent.recv_buf = bufr;
+        msg.parent.length = 2;
+        msg.parent.cs_take = 1;
+        msg.parent.cs_release = 1;
+        msg.parent.next = RT_NULL;
 
         if (rt_qspi_transfer_message(qspi_dev, &msg) != 2)
         {
@@ -326,13 +324,13 @@ static void Flash_Quad_Mode_Enable(void)
 
 static int qspi_read_id(int argc, char **argv)
 {
-    rt_uint8_t id[4] = {0, 0, 0, 0};
-    rt_uint8_t sendbuf[4] = {0x9F, 0xFF, 0xFF, 0xFF};
-    rt_uint8_t send_data[260] = {0};
-    rt_uint8_t read_data[256] = {0};
-    rt_uint8_t quad_wbuf[256] = {0};
-    rt_uint8_t quad_rbuf[256] = {0};
-    rt_uint8_t read_addr[4] = {0x03, 0x00, 0x00, 0x00};
+    rt_uint8_t id[4] = { 0, 0, 0, 0 };
+    rt_uint8_t sendbuf[4] = { 0x9F, 0xFF, 0xFF, 0xFF };
+    rt_uint8_t send_data[260] = { 0 };
+    rt_uint8_t read_data[256] = { 0 };
+    rt_uint8_t quad_wbuf[256] = { 0 };
+    rt_uint8_t quad_rbuf[256] = { 0 };
+    rt_uint8_t read_addr[4] = { 0x03, 0x00, 0x00, 0x00 };
     rt_uint32_t jedec_id;
 
     qspi_w25q_attach();
@@ -345,12 +343,12 @@ static int qspi_read_id(int argc, char **argv)
     }
 
     /* configure QSPI: mode 0, 8-bit data width, 1 data line */
-    qspi_cfg.parent.mode       = RT_SPI_MODE_0;
+    qspi_cfg.parent.mode = RT_SPI_MODE_0;
     qspi_cfg.parent.data_width = 8;
-    qspi_cfg.parent.reserved   = 0;
-    qspi_cfg.medium_size       = 512 * 1024;   /* 512KB for P25Q40H (4Mbit) */
-    qspi_cfg.ddr_mode          = 0;
-    qspi_cfg.qspi_dl_width     = 1;
+    qspi_cfg.parent.reserved = 0;
+    qspi_cfg.medium_size = 512 * 1024;   /* 512KB for P25Q40H (4Mbit) */
+    qspi_cfg.ddr_mode = 0;
+    qspi_cfg.qspi_dl_width = 1;
 
     if (rt_qspi_configure(qspi_dev, &qspi_cfg) != RT_EOK)
     {
@@ -360,24 +358,24 @@ static int qspi_read_id(int argc, char **argv)
 
     /* read JEDEC ID: send 0x9F command, read 3 bytes ID */
     rt_memset(&msg, 0, sizeof(msg));
-    
+
     GPIO_HD_WP_Configuration();
     msg.instruction.qspi_lines = 1;
-    msg.qspi_data_lines        = 1;
-    msg.parent.send_buf        = sendbuf;
-    msg.parent.recv_buf        = id;
-    msg.parent.length          = 4;
-    msg.parent.cs_take         = 1;
-    msg.parent.cs_release      = 1;
-    msg.parent.next            = RT_NULL;
+    msg.qspi_data_lines = 1;
+    msg.parent.send_buf = sendbuf;
+    msg.parent.recv_buf = id;
+    msg.parent.length = 4;
+    msg.parent.cs_take = 1;
+    msg.parent.cs_release = 1;
+    msg.parent.next = RT_NULL;
 
     if (rt_qspi_transfer_message(qspi_dev, &msg) != sizeof(id))
     {
         rt_kprintf("read JEDEC ID failed!\n");
         return -RT_ERROR;
     }
-     GPIO_Configuration();
-    
+    GPIO_Configuration();
+
     jedec_id = ((rt_uint32_t)id[1] << 16) | ((rt_uint32_t)id[2] << 8) | id[3];
 
     rt_kprintf("P25Q40H JEDEC ID: %02X %02X %02X\n", id[1], id[2], id[3]);
@@ -398,9 +396,12 @@ static int qspi_read_id(int argc, char **argv)
     rt_kprintf("\n XSPI Single Write and Read page Start \r\n");
 
     Flash_ENABLE_test();
-    
+
 //  GPIO_Configuration();
-    for (uint16_t i = 0; i < 256; i++) send_data[i + 4] = i;
+    for (uint16_t i = 0; i < 256; i++)
+    {
+        send_data[i + 4] = i;
+    }
     send_data[0] = 0x02;   /* Page Program */
     send_data[1] = 0x00;
     send_data[2] = 0x00;
@@ -451,18 +452,18 @@ static int qspi_read_id(int argc, char **argv)
         Flash_ENABLE_test();
 
         rt_memset(&msg, 0, sizeof(msg));
-        msg.instruction.content    = 0x32;     /* Quad Input Page Program */
+        msg.instruction.content = 0x32;     /* Quad Input Page Program */
         msg.instruction.qspi_lines = 1;
-        msg.address.content        = quad_addr;
-        msg.address.size           = 24;
-        msg.address.qspi_lines     = 1;
-        msg.qspi_data_lines        = 4;
-        msg.parent.send_buf        = quad_wbuf;
-        msg.parent.recv_buf        = RT_NULL;
-        msg.parent.length          = 256;
-        msg.parent.cs_take         = 1;
-        msg.parent.cs_release      = 1;
-        msg.parent.next            = RT_NULL;
+        msg.address.content = quad_addr;
+        msg.address.size = 24;
+        msg.address.qspi_lines = 1;
+        msg.qspi_data_lines = 4;
+        msg.parent.send_buf = quad_wbuf;
+        msg.parent.recv_buf = RT_NULL;
+        msg.parent.length = 256;
+        msg.parent.cs_take = 1;
+        msg.parent.cs_release = 1;
+        msg.parent.next = RT_NULL;
 
         if (rt_qspi_transfer_message(qspi_dev, &msg) != 256)
         {
@@ -476,19 +477,19 @@ static int qspi_read_id(int argc, char **argv)
 
         /* Quad Read (0x6B): cmd=1, addr=1, dummy=8, data=4 */
         rt_memset(&msg, 0, sizeof(msg));
-        msg.instruction.content    = 0x6B;
+        msg.instruction.content = 0x6B;
         msg.instruction.qspi_lines = 1;
-        msg.address.content        = quad_addr;
-        msg.address.size           = 24;
-        msg.address.qspi_lines     = 1;
-        msg.dummy_cycles           = 8;
-        msg.qspi_data_lines        = 4;
-        msg.parent.send_buf        = RT_NULL;
-        msg.parent.recv_buf        = quad_rbuf;
-        msg.parent.length          = 256;
-        msg.parent.cs_take         = 1;
-        msg.parent.cs_release      = 1;
-        msg.parent.next            = RT_NULL;
+        msg.address.content = quad_addr;
+        msg.address.size = 24;
+        msg.address.qspi_lines = 1;
+        msg.dummy_cycles = 8;
+        msg.qspi_data_lines = 4;
+        msg.parent.send_buf = RT_NULL;
+        msg.parent.recv_buf = quad_rbuf;
+        msg.parent.length = 256;
+        msg.parent.cs_take = 1;
+        msg.parent.cs_release = 1;
+        msg.parent.next = RT_NULL;
 
         if (rt_qspi_transfer_message(qspi_dev, &msg) != 256)
         {
@@ -528,7 +529,7 @@ static int qspi_read_id(int argc, char **argv)
 
 MSH_CMD_EXPORT(qspi_read_id, read P25Q40H JEDEC ID via QSPI);
 
-#define LED0_PIN    GET_PIN(B, 1)
+#define LED0_PIN GET_PIN(B, 1)
 
 int main(void)
 {

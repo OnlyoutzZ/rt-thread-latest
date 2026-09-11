@@ -95,29 +95,35 @@
 #include <rtthread.h>
 #include <board.h>
 
-#if defined(RT_USING_SPI) && \
+#if defined(RT_USING_SPI) &&                                 \
     ((defined(BSP_USING_SPI1) && defined(BSP_USING_SPI2)) || \
      (defined(BSP_USING_SPI3) && defined(BSP_USING_SPI4)) || \
      (defined(BSP_USING_SPI5) && defined(BSP_USING_SPI6)))
 
 #include <drivers/dev_spi.h>
 
-#define SPI_PAIR_MAX_LEN        32768   /* aligned static buffer limit (AHB SRAM) */
-#define SPI_PAIR_LEN_MAX        16384   /* max length (4x malloc: heap bound) */
-#define SPI_PAIR_RX_FILL        0xA5    /* rx buffer pre-fill byte */
-#define SPI_PAIR_ROUND_WAIT_MS  6000    /* per-leg handshake timeout, 4-wire (ms) */
+#define SPI_PAIR_MAX_LEN          32768   /* aligned static buffer limit (AHB SRAM) */
+#define SPI_PAIR_LEN_MAX          16384   /* max length (4x malloc: heap bound) */
+#define SPI_PAIR_RX_FILL          0xA5    /* rx buffer pre-fill byte */
+#define SPI_PAIR_ROUND_WAIT_MS    6000    /* per-leg handshake timeout, 4-wire (ms) */
 #define SPI_PAIR_ROUND_WAIT_3W_MS 10000 /* per-leg handshake timeout, 3-wire (ms):
                                            every message cold-restarts the engine
                                            (DeInit+Init direction flip + tail
                                            disable), so a leg may legitimately
                                            outrun the 4-wire budget */
-#define SPI_PAIR_ARM_MARGIN_MS  8       /* margin after slave arm (ms): 从机需在 master
-                                           起时钟前完成 DMA arm + SPI_Enable; CPHA=0(mode0/2)
-                                           第一边沿采样更早, 2ms 边缘, 调大验证 */
-#define SPI_PAIR_DEFAULT_KHZ    1000
-#define SPI_PAIR_LEN_MIN        1
-#define SPI_PAIR_SPEED_MIN_KHZ  100
-#define SPI_PAIR_SPEED_MAX_KHZ  20000
+#define SPI_PAIR_REAP_YIELD_TICKS 2     /* idle-thread reap window after a case:
+                                           lets rt_defunct_execute() free the two
+                                           case threads before the next cell
+                                           allocates (see spi_pair_finish_case) */
+#define SPI_PAIR_ARM_MARGIN_MS    8       /* margin after slave arm (ms): the slave must
+                                           finish DMA arm + SPI_Enable before the master
+                                           starts clocking; CPHA=0 (mode0/2) samples on
+                                           the earlier first edge, 2ms is marginal, raise
+                                           it to verify */
+#define SPI_PAIR_DEFAULT_KHZ      1000
+#define SPI_PAIR_LEN_MIN          1
+#define SPI_PAIR_SPEED_MIN_KHZ    100
+#define SPI_PAIR_SPEED_MAX_KHZ    20000
 
 /* device names are group-row data now (see spi_pair_groups below):
  * group 0 uses master "spi10" on "spi1" and slave "spi20" on "spi2";
@@ -125,9 +131,9 @@
  * group 2 uses master "spi50" on "spi5" and slave "spi60" on "spi6". */
 
 #if defined(__ARMCC_VERSION) && (__ARMCC_VERSION < 6010050)
-#define SPI_PAIR_ALIGN32        __align(32)
+#define SPI_PAIR_ALIGN32 __align(32)
 #else
-#define SPI_PAIR_ALIGN32        __attribute__((aligned(32)))
+#define SPI_PAIR_ALIGN32 __attribute__((aligned(32)))
 #endif
 
 /* SPI register readback for diagnostics (bases from n32h7xx device header:
@@ -137,12 +143,12 @@
  * CTRL2@+0x04: SPIEN=0x1 RDMAEN=0x2 TDMAEN=0x4 ERRINTEN=0x40
  * STS  @+0x08: TE=0x1 RNE=0x2 BUSY=0x4 OVER=0x20
  */
-#define SPI_PAIR_SPI1_BASE      0x400DC000UL
-#define SPI_PAIR_SPI2_BASE      0x400DC400UL
-#define SPI_PAIR_SPI3_BASE      0x4000E400UL   /* SPI3: APB1 base +0xE400 */
-#define SPI_PAIR_SPI4_BASE      0x58002000UL   /* SPI4: APB5 (0x58000000) +0x2000 */
-#define SPI_PAIR_SPI5_BASE      0x58002400UL   /* SPI5: APB5 +0x2400 (n32h7xx.h) */
-#define SPI_PAIR_SPI6_BASE      0x58002800UL   /* SPI6: APB5 +0x2800 (n32h7xx.h) */
+#define SPI_PAIR_SPI1_BASE 0x400DC000UL
+#define SPI_PAIR_SPI2_BASE 0x400DC400UL
+#define SPI_PAIR_SPI3_BASE 0x4000E400UL   /* SPI3: APB1 base +0xE400 */
+#define SPI_PAIR_SPI4_BASE 0x58002000UL   /* SPI4: APB5 (0x58000000) +0x2000 */
+#define SPI_PAIR_SPI5_BASE 0x58002400UL   /* SPI5: APB5 +0x2400 (n32h7xx.h) */
+#define SPI_PAIR_SPI6_BASE 0x58002800UL   /* SPI6: APB5 +0x2800 (n32h7xx.h) */
 
 /* DMA controller/channel register diagnostic (device header:
  * AHB1PERIPH_BASE=0x40040000, DMA1=+0x6800, DMA2=+0x6C00, DMA3=+0x7000;
@@ -153,36 +159,41 @@
  *   group rows carry their own channel list (spi_pair_groups[].dma); e.g.
  *   g1 spi3 TX=DMA2ch0 RX=DMA2ch7, spi4 TX=DMA2ch1 RX=DMA3ch0
  *   g2 spi5 TX=DMA2ch2 RX=DMA3ch1, spi6 TX=DMA2ch3 RX=DMA3ch2 */
-#define SPI_PAIR_DMA1_BASE      0x40046800UL
-#define SPI_PAIR_DMA2_BASE      0x40046C00UL
-#define SPI_PAIR_DMA3_BASE      0x40047000UL   /* DMA3: AHB1PERIPH +0x7000 */
-#define SPI_PAIR_DMA_CH_STEP    0x58UL
+#define SPI_PAIR_DMA1_BASE   0x40046800UL
+#define SPI_PAIR_DMA2_BASE   0x40046C00UL
+#define SPI_PAIR_DMA3_BASE   0x40047000UL   /* DMA3: AHB1PERIPH +0x7000 */
+#define SPI_PAIR_DMA_CH_STEP 0x58UL
 
 /* GPIO PID (pad input data, port +0x10) registers used by the dm2 wire probe.
  * N32H76x AHB5 GPIOA = 0x58032800, step 0x400 per port (see GPIO_GET_INDEX). */
-#define SPI_PAIR_PID_A  0x58032810UL
-#define SPI_PAIR_PID_B  0x58032C10UL
-#define SPI_PAIR_PID_C  0x58033010UL
-#define SPI_PAIR_PID_D  0x58033410UL
-#define SPI_PAIR_PID_E  0x58033810UL
-#define SPI_PAIR_PID_F  0x58033C10UL
-#define SPI_PAIR_PID_G  0x58034010UL
+#define SPI_PAIR_PID_A 0x58032810UL
+#define SPI_PAIR_PID_B 0x58032C10UL
+#define SPI_PAIR_PID_C 0x58033010UL
+#define SPI_PAIR_PID_D 0x58033410UL
+#define SPI_PAIR_PID_E 0x58033810UL
+#define SPI_PAIR_PID_F 0x58033C10UL
+#define SPI_PAIR_PID_G 0x58034010UL
 
 /* log mutex: two threads interleave rt_kprintf at char level otherwise.
  * Lazy init: every command path (incl. early error returns before the run
  * setup) may log, and rt_mutex_take on a zeroed mutex would corrupt lists. */
 static struct rt_mutex spi_pair_print_mtx;
 static rt_bool_t spi_pair_log_ready = RT_FALSE;
-#define PAIR_LOG(...) \
-    do { if (!spi_pair_log_ready) \
-        { rt_mutex_init(&spi_pair_print_mtx, "splog", RT_IPC_FLAG_FIFO); \
-          spi_pair_log_ready = RT_TRUE; } \
-         rt_mutex_take(&spi_pair_print_mtx, RT_WAITING_FOREVER); \
-         rt_kprintf(__VA_ARGS__); \
-         rt_mutex_release(&spi_pair_print_mtx); } while (0)
+#define PAIR_LOG(...)                                                      \
+    do                                                                     \
+    {                                                                      \
+        if (!spi_pair_log_ready)                                           \
+        {                                                                  \
+            rt_mutex_init(&spi_pair_print_mtx, "splog", RT_IPC_FLAG_FIFO); \
+            spi_pair_log_ready = RT_TRUE;                                  \
+        }                                                                  \
+        rt_mutex_take(&spi_pair_print_mtx, RT_WAITING_FOREVER);            \
+        rt_kprintf(__VA_ARGS__);                                           \
+        rt_mutex_release(&spi_pair_print_mtx);                             \
+    } while (0)
 
-#define SPI_PAIR_SALT_A         0xA1u    /* salt of A(master) TX data */
-#define SPI_PAIR_SALT_B         0xB2u    /* salt of B(slave)  TX data */
+#define SPI_PAIR_SALT_A 0xA1u    /* salt of A(master) TX data */
+#define SPI_PAIR_SALT_B 0xB2u    /* salt of B(slave)  TX data */
 
 /* ---------------- group table: which SPI master/slave pair is tested ---- */
 /* One test body serves every "group" = one wired SPI pair on the bench.
@@ -194,20 +205,20 @@ static rt_bool_t spi_pair_log_ready = RT_FALSE;
  * and a multi-pair firmware keeps the original spi1/2 pair first, so all
  * pre-existing invocations parse identically. Adding another wired pair =
  * appending one row; device names must stay unique system-wide. */
-#define SPI_PAIR_DMA_SLOTS      4   /* [0]=A-tx [1]=A-rx [2]=B-tx [3]=B-rx */
-#define SPI_PAIR_GRP_CAP_DM2    0x01u /* row may run spi_dm2 (a_spi/b_spi + wire[] bound) */
+#define SPI_PAIR_DMA_SLOTS   4   /* [0]=A-tx [1]=A-rx [2]=B-tx [3]=B-rx */
+#define SPI_PAIR_GRP_CAP_DM2 0x01u /* row may run spi_dm2 (a_spi/b_spi + wire[] bound) */
 
 struct spi_pair_dma_slot
 {
     rt_uint32_t ctrl_base;          /* DMA1/DMA2 controller base */
-    rt_uint8_t  ch;                 /* channel 0..7 */
+    rt_uint8_t ch;                 /* channel 0..7 */
     const char *label;              /* print identity "spi1-TX DMA1ch6" */
 };
 
 struct spi_pair_wire_pin
 {
     rt_uint32_t pid;                /* GPIO PID register (+0x10) of the pad */
-    rt_uint8_t  bit;
+    rt_uint8_t bit;
     const char *pin;                /* log label, e.g. "PA5" */
 };
 
@@ -236,15 +247,18 @@ struct spi_pair_group
     rt_bool_t attached;
 };
 
-static struct spi_pair_group spi_pair_groups[] =
-{
+static struct spi_pair_group spi_pair_groups[] = {
 #if defined(BSP_USING_SPI1) && defined(BSP_USING_SPI2)
     {
         .name = "g0",
-        .a_bus = "spi1", .a_dev = "spi10",
-        .b_bus = "spi2", .b_dev = "spi20",
-        .a_tag = "spi1(M)", .b_tag = "spi2(S)",
-        .a_base = SPI_PAIR_SPI1_BASE, .b_base = SPI_PAIR_SPI2_BASE,
+        .a_bus = "spi1",
+        .a_dev = "spi10",
+        .b_bus = "spi2",
+        .b_dev = "spi20",
+        .a_tag = "spi1(M)",
+        .b_tag = "spi2(S)",
+        .a_base = SPI_PAIR_SPI1_BASE,
+        .b_base = SPI_PAIR_SPI2_BASE,
         .dma = {
             { SPI_PAIR_DMA1_BASE, 6, "spi1-TX DMA1ch6" },
             { SPI_PAIR_DMA2_BASE, 5, "spi1-RX DMA2ch5" },
@@ -252,41 +266,47 @@ static struct spi_pair_group spi_pair_groups[] =
             { SPI_PAIR_DMA2_BASE, 6, "spi2-RX DMA2ch6" },
         },
         .caps = SPI_PAIR_GRP_CAP_DM2,
-        .a_spi = SPI1, .b_spi = SPI2,
+        .a_spi = SPI1,
+        .b_spi = SPI2,
         .wire = {
-            { SPI_PAIR_PID_A,  5, "PA5" },   /* SPI1.SCK  (master out) */
-            { SPI_PAIR_PID_D,  3, "PD3" },   /* SPI2.SCK  (slave in)   */
-            { SPI_PAIR_PID_A,  7, "PA7" },   /* SPI1.MOSI */
-            { SPI_PAIR_PID_C,  3, "PC3" },   /* SPI2.MOSI */
-            { SPI_PAIR_PID_A,  6, "PA6" },   /* SPI1.MISO */
-            { SPI_PAIR_PID_C,  2, "PC2" },   /* SPI2.MISO */
+            { SPI_PAIR_PID_A, 5, "PA5" },   /* SPI1.SCK  (master out) */
+            { SPI_PAIR_PID_D, 3, "PD3" },   /* SPI2.SCK  (slave in)   */
+            { SPI_PAIR_PID_A, 7, "PA7" },   /* SPI1.MOSI */
+            { SPI_PAIR_PID_C, 3, "PC3" },   /* SPI2.MOSI */
+            { SPI_PAIR_PID_A, 6, "PA6" },   /* SPI1.MISO */
+            { SPI_PAIR_PID_C, 2, "PC2" },   /* SPI2.MISO */
         },
     },
 #endif
 #if defined(BSP_USING_SPI3) && defined(BSP_USING_SPI4)
     {
         .name = "g1",
-        .a_bus = "spi3", .a_dev = "spi30",
-        .b_bus = "spi4", .b_dev = "spi40",
-        .a_tag = "spi3(M)", .b_tag = "spi4(S)",
-        .a_base = SPI_PAIR_SPI3_BASE, .b_base = SPI_PAIR_SPI4_BASE,
+        .a_bus = "spi3",
+        .a_dev = "spi30",
+        .b_bus = "spi4",
+        .b_dev = "spi40",
+        .a_tag = "spi3(M)",
+        .b_tag = "spi4(S)",
+        .a_base = SPI_PAIR_SPI3_BASE,
+        .b_base = SPI_PAIR_SPI4_BASE,
         .dma = {
             { SPI_PAIR_DMA2_BASE, 0, "spi3-TX DMA2ch0" },
             { SPI_PAIR_DMA2_BASE, 7, "spi3-RX DMA2ch7" },
             { SPI_PAIR_DMA2_BASE, 1, "spi4-TX DMA2ch1" },
             { SPI_PAIR_DMA3_BASE, 0, "spi4-RX DMA3ch0" },
         },
-        /* dm2 binding present but the cap is off: g1 has never been wired up
-         * for the register probe, so no claim is made.  Enabling it is this
-         * one word once g1 is hooked up and run. */
-        .caps = 0,
-        .a_spi = SPI3, .b_spi = SPI4,
+        /* dm2 binding was held back while g1 had never been hooked up 4-wire;
+         * it is wired now, so the register probe runs on g1 too and all three
+         * groups carry the same test set. */
+        .caps = SPI_PAIR_GRP_CAP_DM2,
+        .a_spi = SPI3,
+        .b_spi = SPI4,
         .wire = {
-            { SPI_PAIR_PID_B,  3, "PB3" },   /* SPI3.SCK  (master out) */
+            { SPI_PAIR_PID_B, 3, "PB3" },   /* SPI3.SCK  (master out) */
             { SPI_PAIR_PID_G, 13, "PG13" },  /* SPI4.SCK  (slave in)   */
-            { SPI_PAIR_PID_B,  2, "PB2" },   /* SPI3.MOSI */
+            { SPI_PAIR_PID_B, 2, "PB2" },   /* SPI3.MOSI */
             { SPI_PAIR_PID_G, 14, "PG14" },  /* SPI4.MOSI */
-            { SPI_PAIR_PID_B,  4, "PB4" },   /* SPI3.MISO */
+            { SPI_PAIR_PID_B, 4, "PB4" },   /* SPI3.MISO */
             { SPI_PAIR_PID_G, 12, "PG12" },  /* SPI4.MISO */
         },
     },
@@ -294,10 +314,14 @@ static struct spi_pair_group spi_pair_groups[] =
 #if defined(BSP_USING_SPI5) && defined(BSP_USING_SPI6)
     {
         .name = "g2",
-        .a_bus = "spi5", .a_dev = "spi50",
-        .b_bus = "spi6", .b_dev = "spi60",
-        .a_tag = "spi5(M)", .b_tag = "spi6(S)",
-        .a_base = SPI_PAIR_SPI5_BASE, .b_base = SPI_PAIR_SPI6_BASE,
+        .a_bus = "spi5",
+        .a_dev = "spi50",
+        .b_bus = "spi6",
+        .b_dev = "spi60",
+        .a_tag = "spi5(M)",
+        .b_tag = "spi6(S)",
+        .a_base = SPI_PAIR_SPI5_BASE,
+        .b_base = SPI_PAIR_SPI6_BASE,
         .dma = {
             { SPI_PAIR_DMA2_BASE, 2, "spi5-TX DMA2ch2" },
             { SPI_PAIR_DMA3_BASE, 1, "spi5-RX DMA3ch1" },
@@ -305,14 +329,15 @@ static struct spi_pair_group spi_pair_groups[] =
             { SPI_PAIR_DMA3_BASE, 2, "spi6-RX DMA3ch2" },
         },
         .caps = SPI_PAIR_GRP_CAP_DM2,
-        .a_spi = SPI5, .b_spi = SPI6,
+        .a_spi = SPI5,
+        .b_spi = SPI6,
         .wire = {
-            { SPI_PAIR_PID_F,  7, "PF7" },   /* SPI5.SCK  (master out) */
-            { SPI_PAIR_PID_E,  2, "PE2" },   /* SPI6.SCK  (slave in)   */
-            { SPI_PAIR_PID_F,  9, "PF9" },   /* SPI5.MOSI */
-            { SPI_PAIR_PID_E,  6, "PE6" },   /* SPI6.MOSI */
-            { SPI_PAIR_PID_F,  8, "PF8" },   /* SPI5.MISO */
-            { SPI_PAIR_PID_E,  5, "PE5" },   /* SPI6.MISO */
+            { SPI_PAIR_PID_F, 7, "PF7" },   /* SPI5.SCK  (master out) */
+            { SPI_PAIR_PID_E, 2, "PE2" },   /* SPI6.SCK  (slave in)   */
+            { SPI_PAIR_PID_F, 9, "PF9" },   /* SPI5.MOSI */
+            { SPI_PAIR_PID_E, 6, "PE6" },   /* SPI6.MOSI */
+            { SPI_PAIR_PID_F, 8, "PF8" },   /* SPI5.MISO */
+            { SPI_PAIR_PID_E, 5, "PE5" },   /* SPI6.MISO */
         },
     },
 #endif
@@ -586,21 +611,21 @@ struct spi_pair_ctx
 {
     const char *tag;            /* "PAIR" / "HDU" for logs */
     rt_uint32_t len;
-    rt_bool_t   aligned;
-    rt_bool_t   three_wire;     /* half-duplex 3-wire test */
+    rt_bool_t aligned;
+    rt_bool_t three_wire;     /* half-duplex 3-wire test */
     rt_uint32_t round_wait_ms;  /* per-leg handshake timeout (wire-type driven) */
     rt_uint32_t rounds;         /* 0 = infinite soak */
     rt_uint32_t speed_hz;
     rt_uint32_t spi_mode;       /* 0..3 = CPOL/CPHA */
-    rt_int32_t  spi_mode_b;     /* slave mode override, -1 = follow spi_mode */
-    rt_bool_t   rxonly;         /* master recv-only special mode */
+    rt_int32_t spi_mode_b;     /* slave mode override, -1 = follow spi_mode */
+    rt_bool_t rxonly;         /* master recv-only special mode */
     rt_uint32_t xdir;           /* 1=SO master tx-only/slave rx-only,
                                    2=RO master rx-only/slave tx-only (0=bidir) */
     rt_uint32_t legs;           /* HDU: 1=AB only, 2=BA only, 3=both */
     rt_uint32_t salt_a;         /* master TX salt (default SPI_PAIR_SALT_A) */
     rt_uint32_t salt_b;         /* slave  TX salt (default SPI_PAIR_SALT_B) */
     rt_uint32_t data_width;     /* 8 or 16 (default 8) */
-    rt_bool_t   lsb;            /* LSB-first (default MSB) */
+    rt_bool_t lsb;            /* LSB-first (default MSB) */
 
     struct spi_pair_group *g;   /* group under test; synced from spi_pair_cur_g
                                    by setup() every run (reset does not clear) */
@@ -609,7 +634,7 @@ struct spi_pair_ctx
     rt_uint8_t *rx_a;
     rt_uint8_t *tx_b;
     rt_uint8_t *rx_b;
-    rt_bool_t   bufs_heap;
+    rt_bool_t bufs_heap;
 
     rt_sem_t ready_b;           /* slave armed signal (per leg) */
     rt_sem_t done_a;
@@ -619,8 +644,8 @@ struct spi_pair_ctx
     rt_uint32_t ok_rounds;
     rt_uint32_t min_ms;
     rt_uint32_t max_ms;
-    rt_bool_t   stop;
-    rt_bool_t   failed;
+    rt_bool_t stop;
+    rt_bool_t failed;
 };
 
 static struct spi_pair_ctx spi_pair_ctx;
@@ -679,8 +704,7 @@ static rt_err_t spi_pair_config_dev(struct rt_spi_device *dev, rt_bool_t slave,
 {
     struct rt_spi_configuration cfg;
 
-    rt_uint32_t dev_mode = (slave && ctx->spi_mode_b >= 0) ?
-                           (rt_uint32_t)ctx->spi_mode_b : ctx->spi_mode;
+    rt_uint32_t dev_mode = (slave && ctx->spi_mode_b >= 0) ? (rt_uint32_t)ctx->spi_mode_b : ctx->spi_mode;
     cfg.data_width = (rt_uint8_t)ctx->data_width;
     cfg.mode = (slave ? RT_SPI_SLAVE : RT_SPI_MASTER) | RT_SPI_NO_CS;
     cfg.mode |= (ctx->lsb) ? RT_SPI_LSB : RT_SPI_MSB;
@@ -772,10 +796,26 @@ static rt_err_t spi_pair_buf_prepare(struct spi_pair_ctx *ctx)
     /* free heap buffers of the previous run only (static arrays are owned) */
     if (ctx->bufs_heap)
     {
-        if (ctx->tx_a) { rt_free(ctx->tx_a); ctx->tx_a = RT_NULL; }
-        if (ctx->rx_a) { rt_free(ctx->rx_a); ctx->rx_a = RT_NULL; }
-        if (ctx->tx_b) { rt_free(ctx->tx_b); ctx->tx_b = RT_NULL; }
-        if (ctx->rx_b) { rt_free(ctx->rx_b); ctx->rx_b = RT_NULL; }
+        if (ctx->tx_a)
+        {
+            rt_free(ctx->tx_a);
+            ctx->tx_a = RT_NULL;
+        }
+        if (ctx->rx_a)
+        {
+            rt_free(ctx->rx_a);
+            ctx->rx_a = RT_NULL;
+        }
+        if (ctx->tx_b)
+        {
+            rt_free(ctx->tx_b);
+            ctx->tx_b = RT_NULL;
+        }
+        if (ctx->rx_b)
+        {
+            rt_free(ctx->rx_b);
+            ctx->rx_b = RT_NULL;
+        }
     }
 
     if (ctx->aligned)
@@ -796,8 +836,35 @@ static rt_err_t spi_pair_buf_prepare(struct spi_pair_ctx *ctx)
         if (ctx->tx_a == RT_NULL || ctx->rx_a == RT_NULL ||
             ctx->tx_b == RT_NULL || ctx->rx_b == RT_NULL)
         {
+            /* Release the ones that did come through: holding a partial set
+             * keeps up to 3 x len bytes out of the heap until the next
+             * heap-allocating case, which is what turns one failed big case
+             * into a run of them (matrix B: 12288B rows failing at ~60KB
+             * reported free).  Clearing the pointers leaves the context in
+             * the "owns nothing heap" state the next prepare expects. */
+            if (ctx->tx_a)
+            {
+                rt_free(ctx->tx_a);
+                ctx->tx_a = RT_NULL;
+            }
+            if (ctx->rx_a)
+            {
+                rt_free(ctx->rx_a);
+                ctx->rx_a = RT_NULL;
+            }
+            if (ctx->tx_b)
+            {
+                rt_free(ctx->tx_b);
+                ctx->tx_b = RT_NULL;
+            }
+            if (ctx->rx_b)
+            {
+                rt_free(ctx->rx_b);
+                ctx->rx_b = RT_NULL;
+            }
+            ctx->bufs_heap = RT_FALSE;
             PAIR_LOG("[spi] malloc %uB buffers failed!\n", len);
-            return -RT_ERROR;
+            return -RT_ENOMEM;
         }
     }
 
@@ -823,6 +890,29 @@ static rt_bool_t spi_pair_wait_done_b(struct spi_pair_ctx *ctx)
     return (rt_sem_take(ctx->done_b, worst_s * RT_TICK_PER_SECOND) == RT_EOK);
 }
 
+/* Drop the per-case IPC objects.  Only safe once no test thread can still
+ * touch them: the caller must have seen both done signals, or (spawn failure)
+ * have made sure the spawned side already exited.  Idempotent: every pointer
+ * is cleared, so a later error path cannot double-delete. */
+static void spi_pair_drop_sems(struct spi_pair_ctx *ctx)
+{
+    if (ctx->ready_b)
+    {
+        rt_sem_delete(ctx->ready_b);
+        ctx->ready_b = RT_NULL;
+    }
+    if (ctx->done_a)
+    {
+        rt_sem_delete(ctx->done_a);
+        ctx->done_a = RT_NULL;
+    }
+    if (ctx->done_b)
+    {
+        rt_sem_delete(ctx->done_b);
+        ctx->done_b = RT_NULL;
+    }
+}
+
 static void spi_pair_finish_case(struct spi_pair_ctx *ctx, rt_bool_t b_done)
 {
     rt_err_t res = ctx->failed ? -RT_ERROR : RT_EOK;
@@ -839,20 +929,24 @@ static void spi_pair_finish_case(struct spi_pair_ctx *ctx, rt_bool_t b_done)
     {
         /* slave still alive: must not delete sems or threads (use-after-free) */
         PAIR_LOG("[spi] slave thread did not exit within %us (stuck in driver?),"
-                 " skip cleanup\n", spi_pair_chunk_worst_s(ctx));
+                 " skip cleanup\n",
+                 spi_pair_chunk_worst_s(ctx));
         spi_pair_running = RT_FALSE;
         return;
     }
 
     /* NOTE: dynamic threads are auto-reaped by the idle thread
      * (rt_defunct_execute) once they exit - never rt_thread_delete() them */
-    rt_sem_delete(ctx->ready_b);
-    rt_sem_delete(ctx->done_a);
-    rt_sem_delete(ctx->done_b);
-    ctx->ready_b = RT_NULL;
-    ctx->done_a = RT_NULL;
-    ctx->done_b = RT_NULL;
+    spi_pair_drop_sems(ctx);
     spi_pair_running = RT_FALSE;
+
+    /* Hand the idle thread a scheduling window so it can run its
+     * rt_defunct_execute() pass (one call drains the whole defunct list).
+     * A sweep whose cells fail instantly finishes a cell in ~0.2s, so without
+     * this the reaper is starved: the two case threads stay un-reaped holding
+     * ~4.4KB each and the heap is exhausted by cells that never got to run.
+     * Purely a harness pacing aid - it changes no transfer semantics. */
+    rt_thread_delay(SPI_PAIR_REAP_YIELD_TICKS);
 }
 
 /* soak (rounds=0) controller: cmd thread stays free, waits and tears down */
@@ -921,7 +1015,8 @@ static rt_err_t spi_pair_setup(struct spi_pair_ctx *ctx, const char *tag,
         PAIR_LOG("len %u x %u-bit exceeds %u-byte budget\n",
                  len, data_width, aligned ? SPI_PAIR_MAX_LEN : SPI_PAIR_LEN_MAX);
         return -RT_ERROR;
-    }    if (speed_khz < SPI_PAIR_SPEED_MIN_KHZ || speed_khz > SPI_PAIR_SPEED_MAX_KHZ)
+    }
+    if (speed_khz < SPI_PAIR_SPEED_MIN_KHZ || speed_khz > SPI_PAIR_SPEED_MAX_KHZ)
     {
         PAIR_LOG("speed_khz must be %u..%u\n", SPI_PAIR_SPEED_MIN_KHZ, SPI_PAIR_SPEED_MAX_KHZ);
         return -RT_ERROR;
@@ -947,11 +1042,24 @@ static rt_err_t spi_pair_setup(struct spi_pair_ctx *ctx, const char *tag,
                                     : SPI_PAIR_ROUND_WAIT_MS;
     ctx->rxonly = rxonly;
 
-    if (spi_pair_attach(ctx) != RT_EOK ||
-        spi_pair_config(ctx) != RT_EOK ||
-        spi_pair_buf_prepare(ctx) != RT_EOK)
+    /* -RT_ENOMEM marks "the harness could not get the memory", which every
+     * caller reports separately from "the transfer failed": a board that is
+     * out of heap must not be scored as a driver defect. */
     {
-        return -RT_ERROR;
+        rt_err_t err;
+
+        if ((err = spi_pair_attach(ctx)) != RT_EOK)
+        {
+            return err;
+        }
+        if ((err = spi_pair_config(ctx)) != RT_EOK)
+        {
+            return err;
+        }
+        if ((err = spi_pair_buf_prepare(ctx)) != RT_EOK)
+        {
+            return err;
+        }
     }
 
     ctx->ready_b = rt_sem_create("rdy", 0, RT_IPC_FLAG_FIFO);
@@ -973,8 +1081,11 @@ static rt_err_t spi_pair_setup(struct spi_pair_ctx *ctx, const char *tag,
     ctx->stopped = &spi_pair_stopped_obj;
     if (ctx->ready_b == RT_NULL || ctx->done_a == RT_NULL || ctx->done_b == RT_NULL)
     {
+        /* a partial set would stay allocated and be overwritten by the next
+         * case's setup() - i.e. leaked for good - so drop it here */
+        spi_pair_drop_sems(ctx);
         PAIR_LOG("[spi] create semaphore failed!\n");
-        return -RT_ERROR;
+        return -RT_ENOMEM;
     }
     return RT_EOK;
 }
@@ -989,8 +1100,13 @@ static rt_err_t spi_pair_spawn(struct spi_pair_ctx *ctx,
     tid_b = rt_thread_create("spi_slv", slave_entry, ctx, 2048, 23, 10);
     if (tid_b == RT_NULL)
     {
+        /* nothing was spawned, so the case's sems are unreachable from here
+         * on: drop them instead of letting setup()'s next call overwrite
+         * the pointers (that leak is what starved matrix B once the heap got
+         * tight: every failed cell cost 3 semaphores for good) */
         PAIR_LOG("[spi] create slave thread failed!\n");
-        return -RT_ERROR;
+        spi_pair_drop_sems(ctx);
+        return -RT_ENOMEM;
     }
     rt_thread_startup(tid_b);
 
@@ -999,8 +1115,9 @@ static rt_err_t spi_pair_spawn(struct spi_pair_ctx *ctx,
     {
         PAIR_LOG("[spi] create master thread failed!\n");
         ctx->stop = RT_TRUE;
-        rt_sem_take(ctx->done_b, RT_WAITING_FOREVER);
-        return -RT_ERROR;
+        rt_sem_take(ctx->done_b, RT_WAITING_FOREVER);   /* slave exits */
+        spi_pair_drop_sems(ctx);                        /* then it is safe */
+        return -RT_ENOMEM;
     }
     spi_pair_running = RT_TRUE;     /* stop command valid from here on */
     rt_thread_startup(tid_a);
@@ -1079,8 +1196,14 @@ static void spi_pair_master_entry(void *param)
         }
         else
         {
-            if (ms < ctx->min_ms) ctx->min_ms = ms;
-            if (ms > ctx->max_ms) ctx->max_ms = ms;
+            if (ms < ctx->min_ms)
+            {
+                ctx->min_ms = ms;
+            }
+            if (ms > ctx->max_ms)
+            {
+                ctx->max_ms = ms;
+            }
         }
 
         /* wait until slave finished this round (its rx fully in RAM) */
@@ -1110,8 +1233,7 @@ static void spi_pair_master_entry(void *param)
                      ctx->rx_a[4], ctx->rx_a[5], ctx->rx_a[6], ctx->rx_a[7],
                      ctx->rx_a[8], ctx->rx_a[9], ctx->rx_a[10], ctx->rx_a[11],
                      ctx->rx_a[12], ctx->rx_a[13], ctx->rx_a[14], ctx->rx_a[15],
-                     spi_pair_is_all(ctx->rx_a, ctx->len * (ctx->data_width / 8u), SPI_PAIR_RX_FILL) ?
-                     " [rx buffer untouched!]" : "");
+                     spi_pair_is_all(ctx->rx_a, ctx->len * (ctx->data_width / 8u), SPI_PAIR_RX_FILL) ? " [rx buffer untouched!]" : "");
             PAIR_LOG("[spi] MASTER rx[16..47]=%02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x\n",
                      ctx->rx_a[16], ctx->rx_a[17], ctx->rx_a[18], ctx->rx_a[19],
                      ctx->rx_a[20], ctx->rx_a[21], ctx->rx_a[22], ctx->rx_a[23],
@@ -1152,8 +1274,7 @@ static void spi_pair_master_entry(void *param)
                 PAIR_LOG("[spi] SLAVE  rx FAIL r%u: diff@%u rx[0..7]=%02x %02x %02x %02x %02x %02x %02x %02x%s\n",
                          r, diff, ctx->rx_b[0], ctx->rx_b[1], ctx->rx_b[2], ctx->rx_b[3],
                          ctx->rx_b[4], ctx->rx_b[5], ctx->rx_b[6], ctx->rx_b[7],
-                         spi_pair_is_all(ctx->rx_b, ctx->len * (ctx->data_width / 8u), SPI_PAIR_RX_FILL) ?
-                         " [rx buffer untouched!]" : "");
+                         spi_pair_is_all(ctx->rx_b, ctx->len * (ctx->data_width / 8u), SPI_PAIR_RX_FILL) ? " [rx buffer untouched!]" : "");
                 spi_pair_reg_dump("fail", RT_FALSE);
                 ctx->failed = RT_TRUE;
                 ctx->stop = RT_TRUE;
@@ -1215,8 +1336,7 @@ static void spi_pair_slave_entry(void *param)
                      (int)n, ctx->len, spi_pair_tick2ms(rt_tick_get() - t0),
                      ctx->rx_b[0], ctx->rx_b[1], ctx->rx_b[2], ctx->rx_b[3],
                      ctx->rx_b[4], ctx->rx_b[5], ctx->rx_b[6], ctx->rx_b[7],
-                     spi_pair_is_all(ctx->rx_b, ctx->len * (ctx->data_width / 8u), SPI_PAIR_RX_FILL) ?
-                     " [rx buffer untouched!]" : "");
+                     spi_pair_is_all(ctx->rx_b, ctx->len * (ctx->data_width / 8u), SPI_PAIR_RX_FILL) ? " [rx buffer untouched!]" : "");
             spi_pair_reg_dump("fail", RT_FALSE);
             round_ok = RT_FALSE;
         }
@@ -1329,8 +1449,7 @@ static void spi_dir_slave_entry(void *param)
                     PAIR_LOG("[dir] SLAVE(rx-only) rx FAIL r%u: diff@%u rx[0..7]=%02x %02x %02x %02x %02x %02x %02x %02x%s\n",
                              r, diff, ctx->rx_b[0], ctx->rx_b[1], ctx->rx_b[2], ctx->rx_b[3],
                              ctx->rx_b[4], ctx->rx_b[5], ctx->rx_b[6], ctx->rx_b[7],
-                             spi_pair_is_all(ctx->rx_b, ctx->len * (ctx->data_width / 8u), SPI_PAIR_RX_FILL) ?
-                             " [rx buffer untouched!]" : "");
+                             spi_pair_is_all(ctx->rx_b, ctx->len * (ctx->data_width / 8u), SPI_PAIR_RX_FILL) ? " [rx buffer untouched!]" : "");
                     spi_pair_reg_dump("fail", RT_FALSE);
                     round_ok = RT_FALSE;
                 }
@@ -1417,8 +1536,7 @@ static void spi_dir_master_entry(void *param)
                     PAIR_LOG("[dir] MASTER(rx-only) rx FAIL r%u: diff@%u rx[0..7]=%02x %02x %02x %02x %02x %02x %02x %02x%s\n",
                              r, diff, ctx->rx_a[0], ctx->rx_a[1], ctx->rx_a[2], ctx->rx_a[3],
                              ctx->rx_a[4], ctx->rx_a[5], ctx->rx_a[6], ctx->rx_a[7],
-                             spi_pair_is_all(ctx->rx_a, ctx->len * (ctx->data_width / 8u), SPI_PAIR_RX_FILL) ?
-                             " [rx buffer untouched!]" : "");
+                             spi_pair_is_all(ctx->rx_a, ctx->len * (ctx->data_width / 8u), SPI_PAIR_RX_FILL) ? " [rx buffer untouched!]" : "");
                     spi_pair_reg_dump("fail", RT_TRUE);
                     ctx->failed = RT_TRUE;
                     ctx->stop = RT_TRUE;
@@ -1483,10 +1601,22 @@ static int spi_pair_run_case(rt_uint32_t len, rt_bool_t aligned, rt_uint32_t rou
         PAIR_LOG("rxonly is 8-bit only\n");
         return -RT_ERROR;
     }
-    if (spi_pair_setup(ctx, rxonly ? "RXONLY" : "PAIR", len, aligned, rounds,
-                       speed_khz, mode, RT_FALSE, rxonly, data_width, lsb) != RT_EOK)
     {
-        return -RT_ERROR;
+        rt_err_t err = spi_pair_setup(ctx, rxonly ? "RXONLY" : "PAIR", len, aligned,
+                                      rounds, speed_khz, mode, RT_FALSE, rxonly,
+                                      data_width, lsb);
+
+        if (err != RT_EOK)
+        {
+            /* No transfer ran.  Say so in the same shape as a real verdict so
+             * the row is not left as a bare "<no verdict line>" in the logs,
+             * and keep "out of heap" apart from "the setup was rejected". */
+            PAIR_LOG("[spi] case done: %s len=%u mode=%u align=%s => %s\n",
+                     rxonly ? "RXONLY" : "PAIR", len, mode, aligned ? "1" : "0",
+                     (err == -RT_ENOMEM) ? "SKIP(harness out of heap)"
+                                         : "FAIL(setup rejected)");
+            return err;
+        }
     }
 
     {
@@ -1515,9 +1645,18 @@ static int spi_pair_run_case(rt_uint32_t len, rt_bool_t aligned, rt_uint32_t rou
                  " below is a real driver defect\n");
     }
 
-    if (spi_pair_spawn(ctx, spi_pair_slave_entry, spi_pair_master_entry) != RT_EOK)
     {
-        return -RT_ERROR;
+        rt_err_t err = spi_pair_spawn(ctx, spi_pair_slave_entry,
+                                      spi_pair_master_entry);
+
+        if (err != RT_EOK)
+        {
+            PAIR_LOG("[spi] case done: %s len=%u mode=%u align=%s => %s\n",
+                     rxonly ? "RXONLY" : "PAIR", len, mode, aligned ? "1" : "0",
+                     (err == -RT_ENOMEM) ? "SKIP(harness out of heap)"
+                                         : "FAIL(spawn)");
+            return err;
+        }
     }
     return spi_pair_wait_finish(ctx, rounds == 0, rounds);
 }
@@ -1566,8 +1705,7 @@ static void spi_hdu_slave_entry(void *param)
             {
                 PAIR_LOG("[hdu] slave(AB recv) FAIL r%u: diff@%u rx[0..3]=%02x %02x %02x %02x%s\n",
                          r, diff, ctx->rx_b[0], ctx->rx_b[1], ctx->rx_b[2], ctx->rx_b[3],
-                         spi_pair_is_all(ctx->rx_b, ctx->len * (ctx->data_width / 8u), SPI_PAIR_RX_FILL) ?
-                         " [rx buffer untouched!]" : "");
+                         spi_pair_is_all(ctx->rx_b, ctx->len * (ctx->data_width / 8u), SPI_PAIR_RX_FILL) ? " [rx buffer untouched!]" : "");
                 spi_pair_reg_dump("fail", RT_FALSE);
                 round_ok = RT_FALSE;
                 goto __leg_done;
@@ -1588,7 +1726,7 @@ static void spi_hdu_slave_entry(void *param)
             }
         }
 
-__leg_done:
+    __leg_done:
         r++;
         if (!round_ok)
         {
@@ -1697,8 +1835,7 @@ static void spi_hdu_master_entry(void *param)
                          ctx->rx_a[ctx->len > 3 ? ctx->len - 3 : 0],
                          ctx->rx_a[ctx->len > 2 ? ctx->len - 2 : 0],
                          ctx->rx_a[ctx->len - 1],
-                         spi_pair_is_all(ctx->rx_a, ctx->len * (ctx->data_width / 8u), SPI_PAIR_RX_FILL) ?
-                         " [rx buffer untouched!]" : "");
+                         spi_pair_is_all(ctx->rx_a, ctx->len * (ctx->data_width / 8u), SPI_PAIR_RX_FILL) ? " [rx buffer untouched!]" : "");
                 spi_pair_reg_dump("fail", RT_TRUE);
                 ctx->failed = RT_TRUE;
                 ctx->stop = RT_TRUE;
@@ -1715,8 +1852,14 @@ static void spi_hdu_master_entry(void *param)
             }
             else
             {
-                if (ms < ctx->min_ms) ctx->min_ms = ms;
-                if (ms > ctx->max_ms) ctx->max_ms = ms;
+                if (ms < ctx->min_ms)
+                {
+                    ctx->min_ms = ms;
+                }
+                if (ms > ctx->max_ms)
+                {
+                    ctx->max_ms = ms;
+                }
             }
         }
         ctx->ok_rounds++;
@@ -1803,19 +1946,43 @@ static int spi_pair(int argc, char *argv[])
     rt_uint32_t width = 8;
     rt_uint32_t lsb = 0;
 
-    if (argc >= 2) len = spi_pair_atoi(argv[1]);
-    if (argc >= 3) aligned = (spi_pair_atoi(argv[2]) != 0);
-    if (argc >= 4) rounds = spi_pair_atoi(argv[3]);
-    if (argc >= 5) khz = spi_pair_atoi(argv[4]);
-    if (argc >= 6) mode = spi_pair_atoi(argv[5]);
-    if (argc >= 7) width = spi_pair_atoi(argv[6]);
-    if (argc >= 8) lsb = spi_pair_atoi(argv[7]);
+    if (argc >= 2)
+    {
+        len = spi_pair_atoi(argv[1]);
+    }
+    if (argc >= 3)
+    {
+        aligned = (spi_pair_atoi(argv[2]) != 0);
+    }
+    if (argc >= 4)
+    {
+        rounds = spi_pair_atoi(argv[3]);
+    }
+    if (argc >= 5)
+    {
+        khz = spi_pair_atoi(argv[4]);
+    }
+    if (argc >= 6)
+    {
+        mode = spi_pair_atoi(argv[5]);
+    }
+    if (argc >= 7)
+    {
+        width = spi_pair_atoi(argv[6]);
+    }
+    if (argc >= 8)
+    {
+        lsb = spi_pair_atoi(argv[7]);
+    }
 
-    if (spi_pair_group_apply(argc, argv, 7) != RT_EOK) return -RT_ERROR;
+    if (spi_pair_group_apply(argc, argv, 7) != RT_EOK)
+    {
+        return -RT_ERROR;
+    }
     return spi_pair_run_case(len, aligned, rounds, khz, mode, RT_FALSE, width,
                              lsb != 0);
 }
-MSH_CMD_EXPORT(spi_pair, FD 4-wire full-duplex pair: spi_pair [len] [aligned] [rounds] [khz] [mode0-3]);
+MSH_CMD_EXPORT(spi_pair, FD 4 - wire full - duplex pair : spi_pair[len][aligned][rounds][khz][mode0 - 3]);
 
 static int spi_hdu(int argc, char *argv[])
 {
@@ -1826,12 +1993,30 @@ static int spi_hdu(int argc, char *argv[])
     rt_uint32_t legs = 3;
     rt_int32_t mode_b = -1;
 
-    if (argc >= 2) len = spi_pair_atoi(argv[1]);
-    if (argc >= 3) rounds = spi_pair_atoi(argv[2]);
-    if (argc >= 4) khz = spi_pair_atoi(argv[3]);
-    if (argc >= 5) mode = spi_pair_atoi(argv[4]);
-    if (argc >= 6) legs = spi_pair_atoi(argv[5]);
-    if (argc >= 7) mode_b = (rt_int32_t)spi_pair_atoi(argv[6]);
+    if (argc >= 2)
+    {
+        len = spi_pair_atoi(argv[1]);
+    }
+    if (argc >= 3)
+    {
+        rounds = spi_pair_atoi(argv[2]);
+    }
+    if (argc >= 4)
+    {
+        khz = spi_pair_atoi(argv[3]);
+    }
+    if (argc >= 5)
+    {
+        mode = spi_pair_atoi(argv[4]);
+    }
+    if (argc >= 6)
+    {
+        legs = spi_pair_atoi(argv[5]);
+    }
+    if (argc >= 7)
+    {
+        mode_b = (rt_int32_t)spi_pair_atoi(argv[6]);
+    }
     if (rounds == 0)
     {
         PAIR_LOG("hdu rounds must be >=1\n");
@@ -1847,10 +2032,13 @@ static int spi_hdu(int argc, char *argv[])
         PAIR_LOG("hdu slave mode 0..3\n");
         return -RT_ERROR;
     }
-    if (spi_pair_group_apply(argc, argv, 6) != RT_EOK) return -RT_ERROR;
+    if (spi_pair_group_apply(argc, argv, 6) != RT_EOK)
+    {
+        return -RT_ERROR;
+    }
     return spi_hdu_run_case(len, rounds, khz, mode, legs, mode_b);
 }
-MSH_CMD_EXPORT(spi_hdu, HD 3-wire HD alt: spi_hdu [len] [rounds] [khz] [mode0-3] [legs1-3] [slv_mode0-3]);
+MSH_CMD_EXPORT(spi_hdu, HD 3 - wire HD alt : spi_hdu[len][rounds][khz][mode0 - 3][legs1 - 3][slv_mode0 - 3]);
 
 static int spi_bat(int argc, char *argv[])
 {
@@ -1860,15 +2048,24 @@ static int spi_bat(int argc, char *argv[])
     rt_uint32_t ai, li;
     int failed = 0;
 
-    if (argc >= 2) rounds = spi_pair_atoi(argv[1]);
-    if (argc >= 3) khz = spi_pair_atoi(argv[2]);
+    if (argc >= 2)
+    {
+        rounds = spi_pair_atoi(argv[1]);
+    }
+    if (argc >= 3)
+    {
+        khz = spi_pair_atoi(argv[2]);
+    }
     if (rounds == 0 || rounds > 100)
     {
         PAIR_LOG("rounds_each must be 1..100\n");
         return -RT_ERROR;
     }
 
-    if (spi_pair_group_apply(argc, argv, 2) != RT_EOK) return -RT_ERROR;
+    if (spi_pair_group_apply(argc, argv, 2) != RT_EOK)
+    {
+        return -RT_ERROR;
+    }
     for (ai = 0; ai < 2; ai++)
     {
         for (li = 0; li < sizeof(lens) / sizeof(lens[0]); li++)
@@ -1876,7 +2073,7 @@ static int spi_bat(int argc, char *argv[])
             PAIR_LOG("===== battery: len=%u aligned=%u rounds=%u =====\n",
                      lens[li], ai, rounds);
             if (spi_pair_run_case(lens[li], (rt_bool_t)ai, rounds, khz, 0, RT_FALSE,
-                                 8u, RT_FALSE) != RT_EOK)
+                                  8u, RT_FALSE) != RT_EOK)
             {
                 failed++;
             }
@@ -1886,19 +2083,24 @@ static int spi_bat(int argc, char *argv[])
     PAIR_LOG("[spi] battery done: %u/8 cases failed\n", failed);
     return failed ? -RT_ERROR : RT_EOK;
 }
-MSH_CMD_EXPORT(spi_bat, spi battery FD (len 9/4095/4096/8192 x aligned 0/1): spi_bat [rounds_each] [khz]);
+MSH_CMD_EXPORT(spi_bat, spi battery FD(len 9 / 4095 / 4096 / 8192 x aligned 0 / 1) : spi_bat[rounds_each][khz]);
 
 /* ------------------------- combination matrix (spi_all) ------------------------- */
 
-/* 归类:
- *   EXPECT_PASS : 4 线全双工行 -> 预期 PASS
- *   OBSERVE     : 半双工(3-wire)行 -> 需 3W 单线接法(主 MOSI <-> 从 MISO);
- *                 4 线接法下该网不存在, FAIL 属接法产物 -> 结果如实记录,
- *                 PASS/FAIL 均不算"意外"
- * 历史(勿再当缺陷): 早期把 "aligned=1 FD DMA 直发(共用缓冲, recv_buf 不拷回)"
- * 与 "len<10 全双工 slave PIO -EIO" 记为 known 缺陷(预期 FAIL);两者均已修复
- * (前者早于 6ae7b60e3d, 后者随 slave 腿恒走 DMA)——2026-09-10 实测该类 6 行
- * 全部 PASS, 故不再单列 known/false_pass 计数, 也不再有"预期 FAIL"的用例。
+/* Classification:
+ *   EXPECT_PASS : 4-wire full-duplex rows -> expected PASS
+ *   OBSERVE     : half-duplex (3-wire) rows -> need 3W single-wire wiring
+ *                 (master MOSI <-> slave MISO); that net does not exist under
+ *                 4-wire wiring, so a FAIL there is a wiring artifact -> the
+ *                 result is recorded as-is and neither PASS nor FAIL counts
+ *                 as "unexpected"
+ * History (do not treat as defects again): an earlier revision listed
+ * "aligned=1 FD DMA direct send (shared buffer, recv_buf not copied back)"
+ * and "len<10 full-duplex slave PIO -EIO" as known defects (expected FAIL);
+ * both are fixed now (the former predates 6ae7b60e3d, the latter because the
+ * slave leg always goes through DMA) -- all 6 such rows measured PASS on
+ * 2026-09-10, so there are no known/false_pass counters any more and no
+ * "expected FAIL" cases.
  */
 enum spi_all_kind
 {
@@ -1957,15 +2159,24 @@ static int spi_all(int argc, char *argv[])
     struct spi_all_result agg;
     rt_uint32_t mode;
 
-    if (argc >= 2) rounds = spi_pair_atoi(argv[1]);
-    if (argc >= 3) khz = spi_pair_atoi(argv[2]);
+    if (argc >= 2)
+    {
+        rounds = spi_pair_atoi(argv[1]);
+    }
+    if (argc >= 3)
+    {
+        khz = spi_pair_atoi(argv[2]);
+    }
     if (rounds == 0 || rounds > 20)
     {
         PAIR_LOG("rounds_each must be 1..20\n");
         return -RT_ERROR;
     }
 
-    if (spi_pair_group_apply(argc, argv, 2) != RT_EOK) return -RT_ERROR;
+    if (spi_pair_group_apply(argc, argv, 2) != RT_EOK)
+    {
+        return -RT_ERROR;
+    }
     rt_memset(&agg, 0, sizeof(agg));
     PAIR_LOG("===== spi_all: %s<->%s combination matrix (rounds=%u khz=%u)"
              " 4-wire hookup; HD rows need the 3-wire single-line hookup =====\n",
@@ -1985,7 +2196,7 @@ static int spi_all(int argc, char *argv[])
                 rt_snprintf(desc, sizeof(desc), "FD len=%u align=%s mode0",
                             lens[li], ai ? "1" : "0");
                 res = spi_pair_run_case(lens[li], (rt_bool_t)ai, rounds, khz, 0, RT_FALSE,
-                                   8u, RT_FALSE);
+                                        8u, RT_FALSE);
                 spi_all_report_one("A-FD", desc, SPI_ALL_EXPECT_PASS, res, &agg);
             }
         }
@@ -1999,7 +2210,7 @@ static int spi_all(int argc, char *argv[])
 
         rt_snprintf(desc, sizeof(desc), "FD mode%u len=128 align=0", mode);
         res = spi_pair_run_case(128, RT_FALSE, rounds, khz, mode, RT_FALSE,
-                             8u, RT_FALSE);
+                                8u, RT_FALSE);
         spi_all_report_one("B-MODE", desc, SPI_ALL_EXPECT_PASS, res, &agg);
     }
 
@@ -2048,7 +2259,7 @@ static int spi_all(int argc, char *argv[])
     PAIR_LOG("[spi_all] done (no unexpected failures; HD rows are wiring-bound)\n");
     return RT_EOK;
 }
-MSH_CMD_EXPORT(spi_all, current-group sequential combo matrix FD+HD+modes: spi_all [rounds_each] [khz]);
+MSH_CMD_EXPORT(spi_all, current - group sequential combo matrix FD + HD + modes : spi_all[rounds_each][khz]);
 
 /* ---------------------- FD 4-wire full matrix (spi_fdall) ----------------------
  * Full-coverage runner for the 4-wire full-duplex DMA path only: every
@@ -2058,16 +2269,39 @@ MSH_CMD_EXPORT(spi_all, current-group sequential combo matrix FD+HD+modes: spi_a
  * fixed in the DMA regression). A len<10 failure would still be reported as
  * observe rather than "unexpected". */
 
+/* Instrumentation for the "fdall grows the heap every run" hunt.
+ * "used" is the small allocator's live byte counter (same number `free`
+ * prints). thr/sem count objects still on their class lists: a thread that
+ * exited is already detached from the thread list, so a rising "used" with a
+ * flat thr count means either a pending defunct thread (idle has not reaped
+ * it) or a buffer/free-list problem, not a live thread. */
+static void spi_fdall_mem_probe(rt_uint32_t mode, rt_uint32_t len, rt_uint32_t ai)
+{
+    rt_size_t total = 0, used = 0, mx = 0;
+
+    rt_memory_info(&total, &used, &mx);
+    PAIR_LOG("[fdall-mem] m%u len=%-4u a%u used=%-6u max=%-6u thr=%-2d sem=%d\n",
+             mode, len, ai, (rt_uint32_t)used, (rt_uint32_t)mx,
+             rt_object_get_length(RT_Object_Class_Thread),
+             rt_object_get_length(RT_Object_Class_Semaphore));
+}
+
 static int spi_fdall(int argc, char *argv[])
 {
     static const rt_uint32_t lens[] = { 9, 10, 64, 128, 4095, 4096, 8192 };
     rt_uint32_t rounds = 3;
     rt_uint32_t khz = SPI_PAIR_DEFAULT_KHZ;
     rt_uint32_t mode, li, ai;
-    rt_uint32_t total = 0, n_pass = 0, n_obs = 0, n_unexp = 0;
+    rt_uint32_t total = 0, n_pass = 0, n_obs = 0, n_unexp = 0, n_skip = 0;
 
-    if (argc >= 2) rounds = spi_pair_atoi(argv[1]);
-    if (argc >= 3) khz = spi_pair_atoi(argv[2]);
+    if (argc >= 2)
+    {
+        rounds = spi_pair_atoi(argv[1]);
+    }
+    if (argc >= 3)
+    {
+        khz = spi_pair_atoi(argv[2]);
+    }
     if (rounds == 0 || rounds > 50)
     {
         PAIR_LOG("rounds_each must be 1..50\n");
@@ -2080,9 +2314,14 @@ static int spi_fdall(int argc, char *argv[])
         return -RT_ERROR;
     }
 
-    if (spi_pair_group_apply(argc, argv, 2) != RT_EOK) return -RT_ERROR;
+    if (spi_pair_group_apply(argc, argv, 2) != RT_EOK)
+    {
+        return -RT_ERROR;
+    }
     PAIR_LOG("===== spi_fdall: 4-wire FD matrix mode0-3 x len x align"
-             " (rounds=%u khz=%u) =====\n", rounds, khz);
+             " (rounds=%u khz=%u) =====\n",
+             rounds, khz);
+    spi_fdall_mem_probe(0xFFu, 0u, 0u);   /* start of matrix marker */
     for (mode = 0; mode <= 3; mode++)
     {
         for (li = 0; li < sizeof(lens) / sizeof(lens[0]); li++)
@@ -2100,6 +2339,15 @@ static int spi_fdall(int argc, char *argv[])
                     n_pass++;
                     verdict = "PASS";
                 }
+                else if (res == -RT_ENOMEM)
+                {
+                    /* the cell never ran: the harness could not get buffers,
+                     * threads or semaphores.  Not a driver verdict - a heap
+                     * limitation of this build, reported so the row is not
+                     * mistaken for a transfer defect. */
+                    n_skip++;
+                    verdict = "SKIP(harness out of heap)";
+                }
                 else if (lens[li] < 10u)
                 {
                     n_obs++;
@@ -2112,14 +2360,16 @@ static int spi_fdall(int argc, char *argv[])
                 }
                 PAIR_LOG("[fdall] mode%u len=%-4u align=%u => %s\n",
                          mode, lens[li], ai, verdict);
+                spi_fdall_mem_probe(mode, lens[li], ai);
             }
         }
     }
     PAIR_LOG("===== spi_fdall summary: total=%u pass=%u observe_fail=%u"
-             " unexpected_fail=%u =====\n", total, n_pass, n_obs, n_unexp);
+             " unexpected_fail=%u skip_harness_oom=%u =====\n",
+             total, n_pass, n_obs, n_unexp, n_skip);
     return n_unexp ? -RT_ERROR : RT_EOK;
 }
-MSH_CMD_EXPORT(spi_fdall, FD 4-wire full matrix mode0-3 x len x align: spi_fdall [rounds_each] [khz]);
+MSH_CMD_EXPORT(spi_fdall, FD 4 - wire full matrix mode0 - 3 x len x align : spi_fdall[rounds_each][khz]);
 
 /* ---------------------- 3-wire full matrix (spi_3wall) ----------------------
  * Full-coverage runner for the 3-wire single-data-line path (master MOSI <->
@@ -2161,8 +2411,14 @@ static int spi_3wall(int argc, char *argv[])
     rt_uint32_t mode, li, ai, leg;
     rt_uint32_t total = 0, n_pass = 0, n_known = 0, n_obs = 0, n_unexp = 0;
 
-    if (argc >= 2) rounds = spi_pair_atoi(argv[1]);
-    if (argc >= 3) khz = spi_pair_atoi(argv[2]);
+    if (argc >= 2)
+    {
+        rounds = spi_pair_atoi(argv[1]);
+    }
+    if (argc >= 3)
+    {
+        khz = spi_pair_atoi(argv[2]);
+    }
     if (rounds == 0 || rounds > 50)
     {
         PAIR_LOG("rounds_each must be 1..50\n");
@@ -2174,10 +2430,14 @@ static int spi_3wall(int argc, char *argv[])
                  SPI_PAIR_SPEED_MAX_KHZ);
         return -RT_ERROR;
     }
-    if (spi_pair_group_apply(argc, argv, 2) != RT_EOK) return -RT_ERROR;
+    if (spi_pair_group_apply(argc, argv, 2) != RT_EOK)
+    {
+        return -RT_ERROR;
+    }
 
     PAIR_LOG("===== spi_3wall: 3-wire single-line matrix mode0-3 x len x align"
-             " x leg (rounds=%u khz=%u) =====\n", rounds, khz);
+             " x leg (rounds=%u khz=%u) =====\n",
+             rounds, khz);
     for (mode = 0; mode <= 3; mode++)
     {
         for (li = 0; li < sizeof(lens) / sizeof(lens[0]); li++)
@@ -2222,7 +2482,7 @@ static int spi_3wall(int argc, char *argv[])
              total, n_pass, n_known, n_obs, n_unexp);
     return n_unexp ? -RT_ERROR : RT_EOK;
 }
-MSH_CMD_EXPORT(spi_3wall, 3-wire full matrix mode0-3 x len x align x leg: spi_3wall [rounds_each] [khz]);
+MSH_CMD_EXPORT(spi_3wall, 3 - wire full matrix mode0 - 3 x len x align x leg : spi_3wall[rounds_each][khz]);
 
 static int spi_rxonly(int argc, char *argv[])
 {
@@ -2230,15 +2490,27 @@ static int spi_rxonly(int argc, char *argv[])
     rt_uint32_t rounds = 1;
     rt_uint32_t khz = SPI_PAIR_DEFAULT_KHZ;
 
-    if (argc >= 2) len = spi_pair_atoi(argv[1]);
-    if (argc >= 3) rounds = spi_pair_atoi(argv[2]);
-    if (argc >= 4) khz = spi_pair_atoi(argv[3]);
+    if (argc >= 2)
+    {
+        len = spi_pair_atoi(argv[1]);
+    }
+    if (argc >= 3)
+    {
+        rounds = spi_pair_atoi(argv[2]);
+    }
+    if (argc >= 4)
+    {
+        khz = spi_pair_atoi(argv[3]);
+    }
     if (rounds == 0)
     {
         PAIR_LOG("rxonly rounds must be >=1\n");
         return -RT_ERROR;
     }
-    if (spi_pair_group_apply(argc, argv, 3) != RT_EOK) return -RT_ERROR;
+    if (spi_pair_group_apply(argc, argv, 3) != RT_EOK)
+    {
+        return -RT_ERROR;
+    }
     return spi_pair_run_case(len, RT_FALSE, rounds, khz, 0, RT_TRUE, 8u, RT_FALSE);
 }
 
@@ -2253,16 +2525,37 @@ static int spi_so(int argc, char *argv[])
     rt_uint32_t width = 8;
     rt_uint32_t lsb = 0;
 
-    if (argc >= 2) len = spi_pair_atoi(argv[1]);
-    if (argc >= 3) rounds = spi_pair_atoi(argv[2]);
-    if (argc >= 4) khz = spi_pair_atoi(argv[3]);
-    if (argc >= 5) mode = spi_pair_atoi(argv[4]);
-    if (argc >= 6) width = spi_pair_atoi(argv[5]);
-    if (argc >= 7) lsb = spi_pair_atoi(argv[6]);
-    if (spi_pair_group_apply(argc, argv, 6) != RT_EOK) return -RT_ERROR;
+    if (argc >= 2)
+    {
+        len = spi_pair_atoi(argv[1]);
+    }
+    if (argc >= 3)
+    {
+        rounds = spi_pair_atoi(argv[2]);
+    }
+    if (argc >= 4)
+    {
+        khz = spi_pair_atoi(argv[3]);
+    }
+    if (argc >= 5)
+    {
+        mode = spi_pair_atoi(argv[4]);
+    }
+    if (argc >= 6)
+    {
+        width = spi_pair_atoi(argv[5]);
+    }
+    if (argc >= 7)
+    {
+        lsb = spi_pair_atoi(argv[6]);
+    }
+    if (spi_pair_group_apply(argc, argv, 6) != RT_EOK)
+    {
+        return -RT_ERROR;
+    }
     return spi_dir_run_case(len, rounds, khz, mode, 1u, width, lsb != 0);
 }
-MSH_CMD_EXPORT(spi_so, master send-only vs slave recv-only: spi_so [len] [rounds] [khz] [mode0-3]);
+MSH_CMD_EXPORT(spi_so, master send - only vs slave recv - only : spi_so[len][rounds][khz][mode0 - 3]);
 
 static int spi_ro(int argc, char *argv[])
 {
@@ -2273,17 +2566,38 @@ static int spi_ro(int argc, char *argv[])
     rt_uint32_t width = 8;
     rt_uint32_t lsb = 0;
 
-    if (argc >= 2) len = spi_pair_atoi(argv[1]);
-    if (argc >= 3) rounds = spi_pair_atoi(argv[2]);
-    if (argc >= 4) khz = spi_pair_atoi(argv[3]);
-    if (argc >= 5) mode = spi_pair_atoi(argv[4]);
-    if (argc >= 6) width = spi_pair_atoi(argv[5]);
-    if (argc >= 7) lsb = spi_pair_atoi(argv[6]);
-    if (spi_pair_group_apply(argc, argv, 6) != RT_EOK) return -RT_ERROR;
+    if (argc >= 2)
+    {
+        len = spi_pair_atoi(argv[1]);
+    }
+    if (argc >= 3)
+    {
+        rounds = spi_pair_atoi(argv[2]);
+    }
+    if (argc >= 4)
+    {
+        khz = spi_pair_atoi(argv[3]);
+    }
+    if (argc >= 5)
+    {
+        mode = spi_pair_atoi(argv[4]);
+    }
+    if (argc >= 6)
+    {
+        width = spi_pair_atoi(argv[5]);
+    }
+    if (argc >= 7)
+    {
+        lsb = spi_pair_atoi(argv[6]);
+    }
+    if (spi_pair_group_apply(argc, argv, 6) != RT_EOK)
+    {
+        return -RT_ERROR;
+    }
     return spi_dir_run_case(len, rounds, khz, mode, 2u, width, lsb != 0);
 }
-MSH_CMD_EXPORT(spi_ro, master recv-only vs slave send-only: spi_ro [len] [rounds] [khz] [mode0-3]);
-MSH_CMD_EXPORT(spi_rxonly, master recv-only vs slave fdx (drv bug probe): spi_rxonly [len] [rounds] [khz]);
+MSH_CMD_EXPORT(spi_ro, master recv - only vs slave send - only : spi_ro[len][rounds][khz][mode0 - 3]);
+MSH_CMD_EXPORT(spi_rxonly, master recv - only vs slave fdx(drv bug probe) : spi_rxonly[len][rounds][khz]);
 
 static int spi_pair_stop(void)
 {
@@ -2327,7 +2641,7 @@ MSH_CMD_EXPORT(spi_pair_stop, stop running spi pair test);
  * samples both come from the row, nothing is hardwired to a pair.
  * Registers (see header comment L108): CTRL2@+0x04 SPIEN=bit0;
  * STS@+0x08 TE=bit0 RNE=bit1; DAT@+0x0C. */
-#define SPI_DM2_POLL_MAX        500000u
+#define SPI_DM2_POLL_MAX 500000u
 
 static rt_err_t spi_dm2_run_bytes(struct spi_pair_ctx *ctx)
 {
@@ -2440,14 +2754,14 @@ static void spi_dm2_demo_setup(rt_bool_t lsb)
     SPI_I2S_DeInit(b);
     SPI_InitStruct(&st);
     st.DataDirection = SPI_DIR_DOUBLELINE_FULLDUPLEX;
-    st.SpiMode       = SPI_MODE_MASTER;
-    st.DataLen       = SPI_DATA_SIZE_8BITS;
-    st.CLKPOL        = SPI_CLKPOL_HIGH;
-    st.CLKPHA        = SPI_CLKPHA_FIRST_EDGE;
-    st.NSS           = SPI_NSS_SOFT;
-    st.BaudRatePres  = SPI_BR_PRESCALER_256;
-    st.FirstBit      = lsb ? SPI_FB_LSB : SPI_FB_MSB;
-    st.CRCPoly       = 7;
+    st.SpiMode = SPI_MODE_MASTER;
+    st.DataLen = SPI_DATA_SIZE_8BITS;
+    st.CLKPOL = SPI_CLKPOL_HIGH;
+    st.CLKPHA = SPI_CLKPHA_FIRST_EDGE;
+    st.NSS = SPI_NSS_SOFT;
+    st.BaudRatePres = SPI_BR_PRESCALER_256;
+    st.FirstBit = lsb ? SPI_FB_LSB : SPI_FB_MSB;
+    st.CRCPoly = 7;
     SPI_Init(a, &st);
     st.SpiMode = SPI_MODE_SLAVE;
     SPI_Init(b, &st);
@@ -2472,17 +2786,36 @@ static int spi_dm2(int argc, char *argv[])
     rt_bool_t fail = RT_FALSE;
     rt_err_t rc;
 
-    if (argc >= 2) len = spi_pair_atoi(argv[1]);
-    if (argc >= 3) rounds = spi_pair_atoi(argv[2]);
-    if (argc >= 4) policy = spi_pair_atoi(argv[3]);
-    if (argc >= 5) khz = spi_pair_atoi(argv[4]);
-    if (argc >= 6) lsb = spi_pair_atoi(argv[5]);
+    if (argc >= 2)
+    {
+        len = spi_pair_atoi(argv[1]);
+    }
+    if (argc >= 3)
+    {
+        rounds = spi_pair_atoi(argv[2]);
+    }
+    if (argc >= 4)
+    {
+        policy = spi_pair_atoi(argv[3]);
+    }
+    if (argc >= 5)
+    {
+        khz = spi_pair_atoi(argv[4]);
+    }
+    if (argc >= 6)
+    {
+        lsb = spi_pair_atoi(argv[5]);
+    }
 
-    if (spi_pair_group_apply(argc, argv, 5) != RT_EOK) return -RT_ERROR;
+    if (spi_pair_group_apply(argc, argv, 5) != RT_EOK)
+    {
+        return -RT_ERROR;
+    }
     if ((spi_pair_cur_g->caps & SPI_PAIR_GRP_CAP_DM2) == 0u)
     {
         PAIR_LOG("[dm2] register-level probe not bound on group '%s'"
-                 " (row lacks SPI_PAIR_GRP_CAP_DM2)\n", spi_pair_cur_g->name);
+                 " (row lacks SPI_PAIR_GRP_CAP_DM2)\n",
+                 spi_pair_cur_g->name);
         return -RT_ERROR;
     }
     if (spi_pair_running)
@@ -2525,7 +2858,8 @@ static int spi_dm2(int argc, char *argv[])
     }
 
     PAIR_LOG("[dm2] demo-replica CPU per-byte mode2 len=%u rounds=%u"
-             " policy=%u khz=%u 8bit %s\n", len, rounds, policy, khz,
+             " policy=%u khz=%u 8bit %s\n",
+             len, rounds, policy, khz,
              ctx->lsb ? "LSB" : "MSB");
 
     for (r = 0; r < rounds; r++)
@@ -2646,6 +2980,6 @@ static int spi_dm2(int argc, char *argv[])
     }
     return RT_EOK;
 }
-MSH_CMD_EXPORT(spi_dm2, mode2 demo-replica control: spi_dm2 [len] [rounds] [policy0=warm/1=cold] [khz] [lsb0/1] [group]);
+MSH_CMD_EXPORT(spi_dm2, mode2 demo - replica control : spi_dm2[len][rounds][policy0 = warm / 1 = cold][khz][lsb0 / 1][group]);
 
 #endif /* RT_USING_SPI && (SPI1+SPI2 or SPI3+SPI4 pair enabled) */

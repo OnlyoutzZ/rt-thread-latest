@@ -752,7 +752,7 @@ static void phy_linkchange(void)
             }
             else
 #endif
-            if (phy_speed & PHY_100M)
+                if (phy_speed & PHY_100M)
             {
                 LOG_D("100Mbps");
                 n32_eth_device.ETH_Speed = ETH_SPEED_100M;

@@ -79,16 +79,16 @@ extern "C" {
 
 /* ======================= MACCFG Speed/Duplex Bit Mask ======================= */
 #if defined(SOC_SERIES_N32H47x_48x) || defined(SOC_SERIES_N32H49x)
-#define ETH_MACCFG_SPEED_DUPLEX_MASK  (ETH_SPEED_100M | ETH_FULL_DUPLEX_MODE)
+#define ETH_MACCFG_SPEED_DUPLEX_MASK (ETH_SPEED_100M | ETH_FULL_DUPLEX_MODE)
 #else
-#define ETH_MACCFG_SPEED_DUPLEX_MASK  (ETH_MACCFG_PS | ETH_MACCFG_FES | ETH_MACCFG_DM)
+#define ETH_MACCFG_SPEED_DUPLEX_MASK (ETH_MACCFG_PS | ETH_MACCFG_FES | ETH_MACCFG_DM)
 #endif
 
 /* ======================= ETH_Init Param Helper ======================= */
 #if defined(SOC_SERIES_N32H47x_48x) || defined(SOC_SERIES_N32H49x)
-#define ETH_STRUCT_INIT(p)  ETH_StructInit(p)
+#define ETH_STRUCT_INIT(p) ETH_StructInit(p)
 #else
-#define ETH_STRUCT_INIT(p)  ETH_StructInit(ETH, p)
+#define ETH_STRUCT_INIT(p) ETH_StructInit(ETH, p)
 #endif
 
 /* ======================= Standard IEEE 802.3 PHY Registers ======================= */
@@ -186,7 +186,7 @@ extern "C" {
 #define PHY_Status_SPEED_10M(sr)   (!PHY_Status_SPEED_100M(sr))
 #define PHY_Status_FULL_DUPLEX(sr) (((sr) & ((1 << 15) | (1 << 13))) != 0)
 
-/* DM9162EP PHY Specific Interrupt Registers (reference at32 drv_emac.h)
+/* DM9162EP PHY Specific Interrupt Registers
  * 0x15 Interrupt Source Flag / Interrupt Mask */
 #define PHY_INTERRUPT_FLAG_REG 0x15U
 #define PHY_INTERRUPT_MASK_REG 0x15U

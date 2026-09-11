@@ -2699,8 +2699,8 @@ static void spi_rx_dma_isr(struct n32_spi *spi_drv)
                 DMA_ChannelCmd(spi_drv->config->dma_rx->Instance, spi_drv->config->dma_rx->dma_channel, DISABLE);
                 DMA_ChannelCmd(spi_drv->config->dma_tx->Instance, spi_drv->config->dma_tx->dma_channel, DISABLE);
 #elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x)
-            DMA_ConfigInt(spi_drv->config->dma_rx->DMAChx, DMA_INT_TXC, DISABLE);
-            DMA_ConfigInt(spi_drv->config->dma_tx->DMAChx, DMA_INT_TXC, DISABLE);
+                DMA_ConfigInt(spi_drv->config->dma_rx->DMAChx, DMA_INT_TXC, DISABLE);
+                DMA_ConfigInt(spi_drv->config->dma_tx->DMAChx, DMA_INT_TXC, DISABLE);
 #endif
 
                 if (spi_drv->SPI_InitStructure.DataDirection == SPI_DIR_DOUBLELINE_FULLDUPLEX)
@@ -2747,7 +2747,7 @@ static void spi_rx_dma_isr(struct n32_spi *spi_drv)
 #if defined(SOC_SERIES_N32H7xx)
                 DMA_ChannelEventCmd(spi_drv->config->dma_rx->Instance, spi_drv->config->dma_rx->dma_channel, DMA_CH_EVENT_TRANSFER_COMPLETE, DISABLE);
 #elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x)
-            DMA_ConfigInt(spi_drv->config->dma_rx->DMAChx, DMA_INT_TXC, DISABLE);
+                DMA_ConfigInt(spi_drv->config->dma_rx->DMAChx, DMA_INT_TXC, DISABLE);
 #endif
 
                 SPI_I2S_ReceiveData(spi_drv->config->SPIx);
@@ -2763,7 +2763,7 @@ static void spi_rx_dma_isr(struct n32_spi *spi_drv)
         }
 #elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x)
             /* Clear interrupt event status */
-        DMA_ClrIntPendingBit(dma_int_tc, dma_module);
+            DMA_ClrIntPendingBit(dma_int_tc, dma_module);
 #endif
     }
 }
@@ -2855,9 +2855,9 @@ static void spi_tx_dma_isr(struct n32_spi *spi_drv)
 
                 SPI_I2S_EnableDma(spi_drv->config->SPIx, SPI_I2S_DMA_TX, DISABLE);
 #elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x)
-            SPI_I2S_EnableInt(spi_drv->config->SPIx, SPI_I2S_INT_ERR, DISABLE);
+                SPI_I2S_EnableInt(spi_drv->config->SPIx, SPI_I2S_INT_ERR, DISABLE);
 
-            SPI_I2S_EnableDma(spi_drv->config->SPIx, SPI_I2S_DMA_TX, DISABLE);
+                SPI_I2S_EnableDma(spi_drv->config->SPIx, SPI_I2S_DMA_TX, DISABLE);
 #endif
 
                 SPI_I2S_ReceiveData(spi_drv->config->SPIx);
@@ -2874,7 +2874,7 @@ static void spi_tx_dma_isr(struct n32_spi *spi_drv)
     }
 #elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x)
             /* Clear interrupt event status */
-        DMA_ClrIntPendingBit(dma_int_tc, dma_module);
+            DMA_ClrIntPendingBit(dma_int_tc, dma_module);
     }
 #endif
 }

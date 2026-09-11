@@ -27,16 +27,16 @@ extern "C" {
 #if defined(SOC_SERIES_N32H7xx)
 struct mdma_config
 {
-    MDMA_ChNumType  mdma_channel;
-    IRQn_Type       dma_irq;
-    uint32_t        dmamux_channel;
-    uint32_t        dmamux_request;
-    uint32_t        hs_interface;
+    MDMA_ChNumType mdma_channel;
+    IRQn_Type dma_irq;
+    uint32_t dmamux_channel;
+    uint32_t dmamux_request;
+    uint32_t hs_interface;
 };
 #endif
 
-#define XSPI_USING_RX_DMA_FLAG   (1<<0)
-#define XSPI_USING_TX_DMA_FLAG   (1<<1)
+#define XSPI_USING_RX_DMA_FLAG (1 << 0)
+#define XSPI_USING_TX_DMA_FLAG (1 << 1)
 
 #if defined(SOC_SERIES_N32H7xx)
 typedef enum
@@ -52,36 +52,36 @@ typedef enum
 struct n32_xspi
 {
 #if defined(SOC_SERIES_N32H47x_48x)
-    XSPI_InitType                 InitStructure;   /* v1: single combined init struct, global XSPI instance */
+    XSPI_InitType InitStructure;   /* v1: single combined init struct, global XSPI instance */
 #else
-    XSPI_Module                 *xSPIx;
-    XSPI_InitType                InitStructure;
-    XSPI_EnhancedInitType        EnhInitStructure;
+    XSPI_Module *xSPIx;
+    XSPI_InitType InitStructure;
+    XSPI_EnhancedInitType EnhInitStructure;
 #endif
-    char                        *bus_name;
+    char *bus_name;
 
     struct rt_qspi_configuration *qspi_cfg;
-    struct rt_spi_configuration  *cfg;
+    struct rt_spi_configuration *cfg;
 
 #if defined(SOC_SERIES_N32H7xx)
-    XSPI_XIPInitType             XIPInitStructure;
-    XSPI_Work_Direct_t           Direct;
-    rt_uint8_t                   xspi_dma_flag;
+    XSPI_XIPInitType XIPInitStructure;
+    XSPI_Work_Direct_t Direct;
+    rt_uint8_t xspi_dma_flag;
 
     struct
     {
-        rt_bool_t         DMA_Tx_Init;
-        MDMA_ChInitType   TX_DMA_ChInitStr;
-        rt_bool_t         DMA_Rx_Init;
-        MDMA_ChInitType   RX_DMA_ChInitStr;
+        rt_bool_t DMA_Tx_Init;
+        MDMA_ChInitType TX_DMA_ChInitStr;
+        rt_bool_t DMA_Rx_Init;
+        MDMA_ChInitType RX_DMA_ChInitStr;
     } dma;
 
-    rt_uint8_t                   xip_enabled;
+    rt_uint8_t xip_enabled;
 #endif
 
-    rt_uint8_t                   slave_sel;
+    rt_uint8_t slave_sel;
 
-    struct rt_completion         cpt;
+    struct rt_completion cpt;
 };
 
 struct n32_xspi_config
@@ -127,16 +127,16 @@ struct xspi_xip_config
 };
 
 /* XSPI control commands */
-#define XSPI_CTRL_ENTER_XIP      0x01
-#define XSPI_CTRL_EXIT_XIP       0x02
-#define XSPI_CTRL_GET_XIP_ADDR   0x03
+#define XSPI_CTRL_ENTER_XIP    0x01
+#define XSPI_CTRL_EXIT_XIP     0x02
+#define XSPI_CTRL_GET_XIP_ADDR 0x03
 #endif
 
 rt_err_t rt_hw_xspi_device_attach(const char *bus_name, const char *device_name,
-                                   rt_uint8_t data_line_width,
-                                   void (*enter_qspi_mode)(struct rt_qspi_device *),
-                                   void (*exit_qspi_mode)(struct rt_qspi_device *),
-                                   struct n32_xspi_config *cfg);
+                                  rt_uint8_t data_line_width,
+                                  void (*enter_qspi_mode)(struct rt_qspi_device *),
+                                  void (*exit_qspi_mode)(struct rt_qspi_device *),
+                                  struct n32_xspi_config *cfg);
 
 #ifdef __cplusplus
 }

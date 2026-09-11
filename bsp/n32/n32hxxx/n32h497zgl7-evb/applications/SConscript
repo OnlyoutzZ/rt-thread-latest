@@ -5,6 +5,11 @@ cwd     = GetCurrentDir()
 CPPPATH = [cwd]
 src     = ['main.c']
 
+# USB test app is only compiled when the matching cherryusb device
+# template is enabled in menuconfig (rtconfig.h).
+if GetDepend(['RT_CHERRYUSB_DEVICE_TEMPLATE_HID_KEYBOARD']):
+    src += ['usb_hid_keyboard.c']
+
 group = DefineGroup('Applications', src, depend = [''], CPPPATH = CPPPATH)
 
 list = os.listdir(cwd)
