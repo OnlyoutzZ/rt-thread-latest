@@ -4,585 +4,224 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * Change Logs:
- * Date           Author            Notes
- * 2021-08-20     BruceOu           the first version
- * 2025-11-13     RealThread        general GD driver adaptation
+ * Date           Author           Notes
+ * 2026-01-24     ox-horse         first version
+ * 2026-04-07     ox-horse         Add N32H49X and N32H47X_48X
  */
-
-#include <rtdevice.h>
-#include <rthw.h>
-#include <rtconfig.h>
-#include <stdlib.h>
-
-#ifdef RT_USING_PIN
 
 #include "drv_gpio.h"
 
-static const struct pin_index pins[] = {
-#ifdef GPIOA
-    GD32_PIN(0, A, 0),
-    GD32_PIN(1, A, 1),
-    GD32_PIN(2, A, 2),
-    GD32_PIN(3, A, 3),
-    GD32_PIN(4, A, 4),
-    GD32_PIN(5, A, 5),
-    GD32_PIN(6, A, 6),
-    GD32_PIN(7, A, 7),
-    GD32_PIN(8, A, 8),
-    GD32_PIN(9, A, 9),
-    GD32_PIN(10, A, 10),
-    GD32_PIN(11, A, 11),
-    GD32_PIN(12, A, 12),
-    GD32_PIN(13, A, 13),
-    GD32_PIN(14, A, 14),
-    GD32_PIN(15, A, 15),
-#endif
-#ifdef GPIOB
-    GD32_PIN(16, B, 0),
-    GD32_PIN(17, B, 1),
-    GD32_PIN(18, B, 2),
-    GD32_PIN(19, B, 3),
-    GD32_PIN(20, B, 4),
-    GD32_PIN(21, B, 5),
-    GD32_PIN(22, B, 6),
-    GD32_PIN(23, B, 7),
-    GD32_PIN(24, B, 8),
-    GD32_PIN(25, B, 9),
-    GD32_PIN(26, B, 10),
-    GD32_PIN(27, B, 11),
-    GD32_PIN(28, B, 12),
-    GD32_PIN(29, B, 13),
-    GD32_PIN(30, B, 14),
-    GD32_PIN(31, B, 15),
-#endif
-#ifdef GPIOC
-    GD32_PIN(32, C, 0),
-    GD32_PIN(33, C, 1),
-    GD32_PIN(34, C, 2),
-    GD32_PIN(35, C, 3),
-    GD32_PIN(36, C, 4),
-    GD32_PIN(37, C, 5),
-    GD32_PIN(38, C, 6),
-    GD32_PIN(39, C, 7),
-    GD32_PIN(40, C, 8),
-    GD32_PIN(41, C, 9),
-    GD32_PIN(42, C, 10),
-    GD32_PIN(43, C, 11),
-    GD32_PIN(44, C, 12),
-    GD32_PIN(45, C, 13),
-    GD32_PIN(46, C, 14),
-    GD32_PIN(47, C, 15),
-#endif
-#ifdef GPIOD
-    GD32_PIN(48, D, 0),
-    GD32_PIN(49, D, 1),
-    GD32_PIN(50, D, 2),
-    GD32_PIN(51, D, 3),
-    GD32_PIN(52, D, 4),
-    GD32_PIN(53, D, 5),
-    GD32_PIN(54, D, 6),
-    GD32_PIN(55, D, 7),
-    GD32_PIN(56, D, 8),
-    GD32_PIN(57, D, 9),
-    GD32_PIN(58, D, 10),
-    GD32_PIN(59, D, 11),
-    GD32_PIN(60, D, 12),
-    GD32_PIN(61, D, 13),
-    GD32_PIN(62, D, 14),
-    GD32_PIN(63, D, 15),
-#endif
-#ifdef GPIOE
-    GD32_PIN(64, E, 0),
-    GD32_PIN(65, E, 1),
-    GD32_PIN(66, E, 2),
-    GD32_PIN(67, E, 3),
-    GD32_PIN(68, E, 4),
-    GD32_PIN(69, E, 5),
-    GD32_PIN(70, E, 6),
-    GD32_PIN(71, E, 7),
-    GD32_PIN(72, E, 8),
-    GD32_PIN(73, E, 9),
-    GD32_PIN(74, E, 10),
-    GD32_PIN(75, E, 11),
-    GD32_PIN(76, E, 12),
-    GD32_PIN(77, E, 13),
-    GD32_PIN(78, E, 14),
-    GD32_PIN(79, E, 15),
-#endif
-#ifdef GPIOF
-    GD32_PIN(80, F, 0),
-    GD32_PIN(81, F, 1),
-    GD32_PIN(82, F, 2),
-    GD32_PIN(83, F, 3),
-    GD32_PIN(84, F, 4),
-    GD32_PIN(85, F, 5),
-    GD32_PIN(86, F, 6),
-    GD32_PIN(87, F, 7),
-    GD32_PIN(88, F, 8),
-    GD32_PIN(89, F, 9),
-    GD32_PIN(90, F, 10),
-    GD32_PIN(91, F, 11),
-    GD32_PIN(92, F, 12),
-    GD32_PIN(93, F, 13),
-    GD32_PIN(94, F, 14),
-    GD32_PIN(95, F, 15),
-#endif
-#ifdef GPIOG
-    GD32_PIN(96, G, 0),
-    GD32_PIN(97, G, 1),
-    GD32_PIN(98, G, 2),
-    GD32_PIN(99, G, 3),
-    GD32_PIN(100, G, 4),
-    GD32_PIN(101, G, 5),
-    GD32_PIN(102, G, 6),
-    GD32_PIN(103, G, 7),
-    GD32_PIN(104, G, 8),
-    GD32_PIN(105, G, 9),
-    GD32_PIN(106, G, 10),
-    GD32_PIN(107, G, 11),
-    GD32_PIN(108, G, 12),
-    GD32_PIN(109, G, 13),
-    GD32_PIN(110, G, 14),
-    GD32_PIN(111, G, 15),
-#endif
-#ifdef GPIOH
-    GD32_PIN(112, H, 0),
-    GD32_PIN(113, H, 1),
-    GD32_PIN(114, H, 2),
-    GD32_PIN(115, H, 3),
-    GD32_PIN(116, H, 4),
-    GD32_PIN(117, H, 5),
-    GD32_PIN(118, H, 6),
-    GD32_PIN(119, H, 7),
-    GD32_PIN(120, H, 8),
-    GD32_PIN(121, H, 9),
-    GD32_PIN(122, H, 10),
-    GD32_PIN(123, H, 11),
-    GD32_PIN(124, H, 12),
-    GD32_PIN(125, H, 13),
-    GD32_PIN(126, H, 14),
-    GD32_PIN(127, H, 15),
-#endif
-#ifdef GPIOI
-    GD32_PIN(128, I, 0),
-    GD32_PIN(129, I, 1),
-    GD32_PIN(130, I, 2),
-    GD32_PIN(131, I, 3),
-    GD32_PIN(132, I, 4),
-    GD32_PIN(133, I, 5),
-    GD32_PIN(134, I, 6),
-    GD32_PIN(135, I, 7),
-    GD32_PIN(136, I, 8),
-    GD32_PIN(137, I, 9),
-    GD32_PIN(138, I, 10),
-    GD32_PIN(139, I, 11),
-    GD32_PIN(140, I, 12),
-    GD32_PIN(141, I, 13),
-    GD32_PIN(142, I, 14),
-    GD32_PIN(143, I, 15),
-#endif
-};
+#ifdef BSP_USING_GPIO
 
-#if defined SOC_SERIES_GD32E23x
-static const struct pin_irq_map pin_irq_map[] = {
-    { GPIO_PIN_0, EXTI0_1_IRQn },
-    { GPIO_PIN_1, EXTI0_1_IRQn },
-    { GPIO_PIN_2, EXTI2_3_IRQn },
-    { GPIO_PIN_3, EXTI2_3_IRQn },
-    { GPIO_PIN_4, EXTI4_15_IRQn },
-    { GPIO_PIN_5, EXTI4_15_IRQn },
-    { GPIO_PIN_6, EXTI4_15_IRQn },
-    { GPIO_PIN_7, EXTI4_15_IRQn },
-    { GPIO_PIN_8, EXTI4_15_IRQn },
-    { GPIO_PIN_9, EXTI4_15_IRQn },
-    { GPIO_PIN_10, EXTI4_15_IRQn },
-    { GPIO_PIN_11, EXTI4_15_IRQn },
-    { GPIO_PIN_12, EXTI4_15_IRQn },
-    { GPIO_PIN_13, EXTI4_15_IRQn },
-    { GPIO_PIN_14, EXTI4_15_IRQn },
-    { GPIO_PIN_15, EXTI4_15_IRQn },
-};
-#else
-static const struct pin_irq_map pin_irq_map[] = {
-    { GPIO_PIN_0, EXTI0_IRQn },
-    { GPIO_PIN_1, EXTI1_IRQn },
-    { GPIO_PIN_2, EXTI2_IRQn },
-    { GPIO_PIN_3, EXTI3_IRQn },
-    { GPIO_PIN_4, EXTI4_IRQn },
-    { GPIO_PIN_5, EXTI5_9_IRQn },
-    { GPIO_PIN_6, EXTI5_9_IRQn },
-    { GPIO_PIN_7, EXTI5_9_IRQn },
-    { GPIO_PIN_8, EXTI5_9_IRQn },
-    { GPIO_PIN_9, EXTI5_9_IRQn },
-    { GPIO_PIN_10, EXTI10_15_IRQn },
-    { GPIO_PIN_11, EXTI10_15_IRQn },
-    { GPIO_PIN_12, EXTI10_15_IRQn },
-    { GPIO_PIN_13, EXTI10_15_IRQn },
-    { GPIO_PIN_14, EXTI10_15_IRQn },
-    { GPIO_PIN_15, EXTI10_15_IRQn },
-};
+#define PIN_NUM(port, no) (((((port) & 0xFU) << 4U) | ((no) & 0xFU)))
+#define PIN_PORT(pin)     ((uint8_t)(((pin) >> 4U) & 0xFU))
+#define PIN_NO(pin)       ((uint8_t)((pin) & 0xFU))
+
+#define PIN_STPORT(pin)   ((GPIO_Module *)(GPIOA_BASE + (0x400U * PIN_PORT(pin))))
+#define PIN_STPIN(pin)    ((uint16_t)(1U << PIN_NO(pin)))
+
+#define ITEM_NUM(items)   (sizeof(items) / sizeof((items)[0]))
+
+static uint32_t pin_irq_enable_mask = 0;
+
+
+#if defined(SOC_SERIES_N32H7xx)
+
+    #define __N32_PORT_MAX 11u
+
+#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x) 
+
+    #define __N32_PORT_MAX 8u
+
 #endif
 
-struct rt_pin_irq_hdr pin_irq_hdr_tab[] = {
-    { -1, 0, RT_NULL, RT_NULL },
-    { -1, 0, RT_NULL, RT_NULL },
-    { -1, 0, RT_NULL, RT_NULL },
-    { -1, 0, RT_NULL, RT_NULL },
-    { -1, 0, RT_NULL, RT_NULL },
-    { -1, 0, RT_NULL, RT_NULL },
-    { -1, 0, RT_NULL, RT_NULL },
-    { -1, 0, RT_NULL, RT_NULL },
-    { -1, 0, RT_NULL, RT_NULL },
-    { -1, 0, RT_NULL, RT_NULL },
-    { -1, 0, RT_NULL, RT_NULL },
-    { -1, 0, RT_NULL, RT_NULL },
-    { -1, 0, RT_NULL, RT_NULL },
-    { -1, 0, RT_NULL, RT_NULL },
-    { -1, 0, RT_NULL, RT_NULL },
-    { -1, 0, RT_NULL, RT_NULL },
-};
 
-#define ITEM_NUM(items) sizeof(items) / sizeof(items[0])
+#define PIN_STPORT_MAX __N32_PORT_MAX
 
-/**
-  * @brief  get pin
-  * @param  pin
-  * @retval None
-  */
-const struct pin_index *get_pin(rt_uint8_t pin)
+static const struct pin_irq_map pin_irq_map[] =
 {
-    const struct pin_index *index;
+    {GPIO_PIN_0,  EXTI_LINE0, EXTI0_IRQn},
+    {GPIO_PIN_1,  EXTI_LINE1, EXTI1_IRQn},
+    {GPIO_PIN_2,  EXTI_LINE2, EXTI2_IRQn},
+    {GPIO_PIN_3,  EXTI_LINE3, EXTI3_IRQn},
+    {GPIO_PIN_4,  EXTI_LINE4, EXTI4_IRQn},
+    {GPIO_PIN_5,  EXTI_LINE5, EXTI9_5_IRQn},
+    {GPIO_PIN_6,  EXTI_LINE6, EXTI9_5_IRQn},
+    {GPIO_PIN_7,  EXTI_LINE7, EXTI9_5_IRQn},
+    {GPIO_PIN_8,  EXTI_LINE8, EXTI9_5_IRQn},
+    {GPIO_PIN_9,  EXTI_LINE9, EXTI9_5_IRQn},
+    {GPIO_PIN_10, EXTI_LINE10, EXTI15_10_IRQn},
+    {GPIO_PIN_11, EXTI_LINE11, EXTI15_10_IRQn},
+    {GPIO_PIN_12, EXTI_LINE12, EXTI15_10_IRQn},
+    {GPIO_PIN_13, EXTI_LINE13, EXTI15_10_IRQn},
+    {GPIO_PIN_14, EXTI_LINE14, EXTI15_10_IRQn},
+    {GPIO_PIN_15, EXTI_LINE15, EXTI15_10_IRQn},
+};
 
-    if (pin < ITEM_NUM(pins))
+static struct rt_pin_irq_hdr pin_irq_hdr_tab[] =
+{
+    {-1, 0, RT_NULL, RT_NULL},
+    {-1, 0, RT_NULL, RT_NULL},
+    {-1, 0, RT_NULL, RT_NULL},
+    {-1, 0, RT_NULL, RT_NULL},
+    {-1, 0, RT_NULL, RT_NULL},
+    {-1, 0, RT_NULL, RT_NULL},
+    {-1, 0, RT_NULL, RT_NULL},
+    {-1, 0, RT_NULL, RT_NULL},
+    {-1, 0, RT_NULL, RT_NULL},
+    {-1, 0, RT_NULL, RT_NULL},
+    {-1, 0, RT_NULL, RT_NULL},
+    {-1, 0, RT_NULL, RT_NULL},
+    {-1, 0, RT_NULL, RT_NULL},
+    {-1, 0, RT_NULL, RT_NULL},
+    {-1, 0, RT_NULL, RT_NULL},
+    {-1, 0, RT_NULL, RT_NULL},
+};
+
+/* e.g. PA.0 */
+static rt_base_t n32_pin_get(const char *name)
+{
+    rt_base_t pin = 0;
+    int hw_port_num, hw_pin_num = 0;
+    int i, name_len;
+
+    name_len = rt_strlen(name);
+
+    if ((name_len < 4U) || (name_len >= 6U))
     {
-        index = &pins[pin];
-        if (index->index == -1)
-            index = RT_NULL;
+        goto out;
+    }
+    if ((name[0] != 'P') || (name[2] != '.'))
+    {
+        goto out;
+    }
+
+    if ((name[1] >= 'A') && (name[1] <= 'Z'))
+    {
+        hw_port_num = (int)(name[1] - 'A');
     }
     else
     {
-        index = RT_NULL;
+        goto out;
     }
 
-    return index;
+    for (i = 3; i < name_len; i++)
+    {
+        hw_pin_num *= 10;
+        hw_pin_num += name[i] - '0';
+    }
+
+    pin = PIN_NUM(hw_port_num, hw_pin_num);
+
+    return pin;
+
+out:
+    rt_kprintf("Px.y  x:A~Z  y:0-15, e.g. PA.0\n");
+    return -RT_EINVAL;
 }
 
-int get_pin_config(const char *pin_name, uint32_t *port, uint32_t *pin, rcu_periph_enum *clk)
+static void n32_pin_write(rt_device_t dev, rt_base_t pin, rt_uint8_t value)
 {
-    if (pin_name == NULL || port == NULL || pin == NULL || clk == NULL)
-    {
-        return -RT_ERROR;
-    }
+    GPIO_Module *gpio_port;
+    uint16_t gpio_pin;
 
-    if (rt_strlen(pin_name) < 3 || pin_name[0] != 'P')
+    if (PIN_PORT(pin) < PIN_STPORT_MAX)
     {
-        return -RT_ERROR;
-    }
+        gpio_port = PIN_STPORT(pin);
+        gpio_pin = PIN_STPIN(pin);
 
-    char port_letter = pin_name[1];
-    switch (port_letter)
-    {
-#ifdef GPIOA
-    case 'A':
-        *port = GPIOA;
-        *clk = RCU_GPIOA;
-        break;
-#endif /* GPIOA */
-#ifdef GPIOB
-    case 'B':
-        *port = GPIOB;
-        *clk = RCU_GPIOB;
-        break;
-#endif /* GPIOB */
-#ifdef GPIOC
-    case 'C':
-        *port = GPIOC;
-        *clk = RCU_GPIOC;
-        break;
-#endif /* GPIOC */
-#ifdef GPIOD
-    case 'D':
-        *port = GPIOD;
-        *clk = RCU_GPIOD;
-        break;
-#endif /* GPIOD */
-#ifdef GPIOE
-    case 'E':
-        *port = GPIOE;
-        *clk = RCU_GPIOE;
-        break;
-#endif /* GPIOE */
-#ifdef GPIOF
-    case 'F':
-        *port = GPIOF;
-        *clk = RCU_GPIOF;
-        break;
-#endif /* GPIOF */
-#ifdef GPIOG
-    case 'G':
-        *port = GPIOG;
-        *clk = RCU_GPIOG;
-        break;
-#endif /* GPIOG */
-#ifdef GPIOH
-    case 'H':
-        *port = GPIOH;
-        *clk = RCU_GPIOH;
-        break;
-#endif /* GPIOH */
-#ifdef GPIOI
-    case 'I':
-        *port = GPIOI;
-        *clk = RCU_GPIOI;
-        break;
-#endif /* GPIOI */
-#ifdef GPIOJ
-    case 'J':
-        *port = GPIOJ;
-        *clk = RCU_GPIOJ;
-        break;
-#endif /* GPIOJ */
-#ifdef GPIOK
-    case 'K':
-        *port = GPIOK;
-        *clk = RCU_GPIOK;
-        break;
-#endif /* GPIOK */
-    default:
-        return -RT_ERROR;
+        if (value != 0)
+        {
+            gpio_port->PBSC = gpio_pin;
+        }
+        else
+        {
+            gpio_port->PBC = gpio_pin;
+        }
     }
-
-    int pin_num = atoi(pin_name + 2);
-    if (pin_num < 0 || pin_num > 15)
-    {
-        return -RT_ERROR;
-    }
-    *pin = GPIO_PIN_0 << pin_num;
-
-    return 0;
 }
 
-int pin_alternate_config(const char *alternate, uint32_t *af)
+static rt_ssize_t n32_pin_read(rt_device_t dev, rt_base_t pin)
 {
-    if (alternate == NULL || af == NULL)
+    GPIO_Module *gpio_port;
+    uint16_t gpio_pin;
+    Bit_OperateType state = Bit_RESET;
+
+    if (PIN_PORT(pin) < PIN_STPORT_MAX)
     {
-        return -RT_ERROR;
+        gpio_port = PIN_STPORT(pin);
+        gpio_pin = PIN_STPIN(pin);
+
+        if ((gpio_port->PID & gpio_pin) != Bit_RESET)
+        {
+            state = Bit_SET;
+        }
+        else
+        {
+            state = Bit_RESET;
+        }
     }
-
-    if (alternate[0] != 'A' || alternate[1] != 'F')
-    {
-        return -RT_ERROR;
-    }
-
-    int af_num = atoi(alternate + 2);
-    if (af_num < 0 || af_num > 15)
-    {
-        return -RT_ERROR;
-    }
-
-    switch (af_num)
-    {
-#ifdef GPIO_AF_0
-        case 0: *af = GPIO_AF_0; break;
-#endif /* GPIO_AF_0 */
-#ifdef GPIO_AF_1
-        case 1: *af = GPIO_AF_1; break;
-#endif /* GPIO_AF_1 */
-#ifdef GPIO_AF_2
-        case 2: *af = GPIO_AF_2; break;
-#endif /* GPIO_AF_2 */
-#ifdef GPIO_AF_3
-        case 3: *af = GPIO_AF_3; break;
-#endif /* GPIO_AF_3 */
-#ifdef GPIO_AF_4
-        case 4: *af = GPIO_AF_4; break;
-#endif /* GPIO_AF_4 */
-#ifdef GPIO_AF_5
-        case 5: *af = GPIO_AF_5; break;
-#endif /* GPIO_AF_5 */
-#ifdef GPIO_AF_6
-        case 6: *af = GPIO_AF_6; break;
-#endif /* GPIO_AF_6 */
-#ifdef GPIO_AF_7
-        case 7: *af = GPIO_AF_7; break;
-#endif /* GPIO_AF_7 */
-#ifdef GPIO_AF_8
-        case 8: *af = GPIO_AF_8; break;
-#endif /* GPIO_AF_8 */
-#ifdef GPIO_AF_9
-        case 9: *af = GPIO_AF_9; break;
-#endif /* GPIO_AF_9 */
-#ifdef GPIO_AF_10
-        case 10: *af = GPIO_AF_10; break;
-#endif /* GPIO_AF_10 */
-#ifdef GPIO_AF_11
-        case 11: *af = GPIO_AF_11; break;
-#endif /* GPIO_AF_11 */
-#ifdef GPIO_AF_12
-        case 12: *af = GPIO_AF_12; break;
-#endif /* GPIO_AF_12 */
-#ifdef GPIO_AF_13
-        case 13: *af = GPIO_AF_13; break;
-#endif /* GPIO_AF_13 */
-#ifdef GPIO_AF_14
-        case 14: *af = GPIO_AF_14; break;
-#endif /* GPIO_AF_14 */
-#ifdef GPIO_AF_15
-        case 15: *af = GPIO_AF_15; break;
-#endif /* GPIO_AF_15 */
-        default: return -1;
-    }
-
-    return 0;
-}
-
-/**
-  * @brief  set pin mode
-  * @param  dev, pin, mode
-  * @retval None
-  */
-static void gd32_pin_mode(rt_device_t dev, rt_base_t pin, rt_uint8_t mode)
-{
-    const struct pin_index *index = RT_NULL;
-    rt_uint32_t pin_mode = 0;
-
-#if defined SOC_SERIES_GD32F4xx || defined SOC_SERIES_GD32H7xx || defined SOC_SERIES_GD32H75E || defined SOC_SERIES_GD32F5xx || defined SOC_SERIES_GD32E23x
-    rt_uint32_t pin_pupd = 0, pin_odpp = 0;
-#endif
-
-    index = get_pin(pin);
-    if (index == RT_NULL)
-    {
-        return;
-    }
-
-    /* GPIO Periph clock enable */
-    rcu_periph_clock_enable(index->clk);
-#if defined SOC_SERIES_GD32F4xx || defined SOC_SERIES_GD32H7xx || defined SOC_SERIES_GD32H75E || defined SOC_SERIES_GD32F5xx || defined SOC_SERIES_GD32E23x
-    pin_mode = GPIO_MODE_OUTPUT;
-#else
-    pin_mode = GPIO_MODE_OUT_PP;
-#endif
-
-    switch (mode)
-    {
-    case PIN_MODE_OUTPUT:
-        /* output setting */
-#if defined SOC_SERIES_GD32F4xx || defined SOC_SERIES_GD32H7xx || defined SOC_SERIES_GD32H75E || defined SOC_SERIES_GD32F5xx || defined SOC_SERIES_GD32E23x
-        pin_mode = GPIO_MODE_OUTPUT;
-        pin_pupd = GPIO_PUPD_NONE;
-        pin_odpp = GPIO_OTYPE_PP;
-#else
-        pin_mode = GPIO_MODE_OUT_PP;
-#endif
-        break;
-    case PIN_MODE_OUTPUT_OD:
-        /* output setting: od. */
-#if defined SOC_SERIES_GD32F4xx || defined SOC_SERIES_GD32H7xx || defined SOC_SERIES_GD32H75E || defined SOC_SERIES_GD32F5xx || defined SOC_SERIES_GD32E23x
-        pin_mode = GPIO_MODE_OUTPUT;
-        pin_pupd = GPIO_PUPD_NONE;
-        pin_odpp = GPIO_OTYPE_OD;
-#else
-        pin_mode = GPIO_MODE_OUT_OD;
-#endif
-        break;
-    case PIN_MODE_INPUT:
-        /* input setting: not pull. */
-#if defined SOC_SERIES_GD32F4xx || defined SOC_SERIES_GD32H7xx || defined SOC_SERIES_GD32H75E || defined SOC_SERIES_GD32F5xx || defined SOC_SERIES_GD32E23x
-        pin_mode = GPIO_MODE_INPUT;
-        pin_pupd = GPIO_PUPD_PULLUP | GPIO_PUPD_PULLDOWN;
-#else
-        pin_mode = GPIO_MODE_IN_FLOATING;
-#endif
-        break;
-    case PIN_MODE_INPUT_PULLUP:
-        /* input setting: pull up. */
-#if defined SOC_SERIES_GD32F4xx || defined SOC_SERIES_GD32H7xx || defined SOC_SERIES_GD32H75E || defined SOC_SERIES_GD32F5xx || defined SOC_SERIES_GD32E23x
-        pin_mode = GPIO_MODE_INPUT;
-        pin_pupd = GPIO_PUPD_PULLUP;
-#else
-        pin_mode = GPIO_MODE_IPU;
-#endif
-        break;
-    case PIN_MODE_INPUT_PULLDOWN:
-        /* input setting: pull down. */
-#if defined SOC_SERIES_GD32F4xx || defined SOC_SERIES_GD32H7xx || defined SOC_SERIES_GD32H75E || defined SOC_SERIES_GD32F5xx || defined SOC_SERIES_GD32E23x
-        pin_mode = GPIO_MODE_INPUT;
-        pin_pupd = GPIO_PUPD_PULLDOWN;
-#else
-        pin_mode = GPIO_MODE_IPD;
-#endif
-        break;
-    default:
-        break;
-    }
-
-#if defined SOC_SERIES_GD32F4xx || defined SOC_SERIES_GD32F5xx || defined SOC_SERIES_GD32E23x
-    gpio_mode_set(index->gpio_periph, pin_mode, pin_pupd, index->pin);
-    if (pin_mode == GPIO_MODE_OUTPUT)
-    {
-        gpio_output_options_set(index->gpio_periph, pin_odpp, GPIO_OSPEED_50MHZ, index->pin);
-    }
-#elif defined SOC_SERIES_GD32H7xx || defined SOC_SERIES_GD32H75E
-    gpio_mode_set(index->gpio_periph, pin_mode, pin_pupd, index->pin);
-    if (pin_mode == GPIO_MODE_OUTPUT)
-    {
-        gpio_output_options_set(index->gpio_periph, pin_odpp, GPIO_OSPEED_60MHZ, index->pin);
-    }
-#else
-    gpio_init(index->gpio_periph, pin_mode, GPIO_OSPEED_50MHZ, index->pin);
-#endif
-}
-
-/**
-  * @brief  pin write
-  * @param  dev, pin, valuie
-  * @retval None
-  */
-static void gd32_pin_write(rt_device_t dev, rt_base_t pin, rt_uint8_t value)
-{
-    const struct pin_index *index = RT_NULL;
-
-    index = get_pin(pin);
-    if (index == RT_NULL)
-    {
-        return;
-    }
-
-    gpio_bit_write(index->gpio_periph, index->pin, (bit_status)value);
-}
-
-/**
-  * @brief  pin read
-  * @param  dev, pin
-  * @retval None
-  */
-static rt_ssize_t gd32_pin_read(rt_device_t dev, rt_base_t pin)
-{
-    rt_ssize_t value = PIN_LOW;
-    const struct pin_index *index = RT_NULL;
-
-    index = get_pin(pin);
-    if (index == RT_NULL)
+    else
     {
         return -RT_EINVAL;
     }
 
-    value = gpio_input_bit_get(index->gpio_periph, index->pin);
-    return value;
+    return (state == Bit_RESET) ? PIN_LOW : PIN_HIGH;
 }
 
-/**
-  * @brief  bit2bitno
-  * @param  bit
-  * @retval None
-  */
+static void n32_pin_mode(rt_device_t dev, rt_base_t pin, rt_uint8_t mode)
+{
+    GPIO_InitType GPIO_InitStructure;
+
+    if (PIN_PORT(pin) >= PIN_STPORT_MAX)
+    {
+        return;
+    }
+
+    GPIO_InitStruct(&GPIO_InitStructure);
+    /* Configure GPIO_InitStructure */
+    GPIO_InitStructure.Pin = PIN_STPIN(pin);
+
+    if (mode == PIN_MODE_OUTPUT)
+    {
+        /* output setting */
+        GPIO_InitStructure.GPIO_Mode = GPIO_MODE_OUTPUT_PP;
+        GPIO_InitStructure.GPIO_Pull = GPIO_NO_PULL;
+    }
+    else if (mode == PIN_MODE_INPUT)
+    {
+        /* input setting: not pull. */
+        GPIO_InitStructure.GPIO_Mode = GPIO_MODE_INPUT;
+        GPIO_InitStructure.GPIO_Pull = GPIO_NO_PULL;
+    }
+    else if (mode == PIN_MODE_INPUT_PULLUP)
+    {
+        /* input setting: pull up. */
+        GPIO_InitStructure.GPIO_Mode = GPIO_MODE_INPUT;
+        GPIO_InitStructure.GPIO_Pull = GPIO_PULL_UP;
+    }
+    else if (mode == PIN_MODE_INPUT_PULLDOWN)
+    {
+        /* input setting: pull down. */
+        GPIO_InitStructure.GPIO_Mode = GPIO_MODE_INPUT;
+        GPIO_InitStructure.GPIO_Pull = GPIO_PULL_DOWN;
+    }
+    else if (mode == PIN_MODE_OUTPUT_OD)
+    {
+        /* output setting: od. */
+        GPIO_InitStructure.GPIO_Mode = GPIO_MODE_OUTPUT_OD;
+        GPIO_InitStructure.GPIO_Pull = GPIO_NO_PULL;
+    }
+
+    GPIO_InitPeripheral(PIN_STPORT(pin), &GPIO_InitStructure);
+}
+
 rt_inline rt_int32_t bit2bitno(rt_uint32_t bit)
 {
-    rt_uint8_t i;
+    rt_int32_t i;
     for (i = 0; i < 32; i++)
     {
-        if ((0x01 << i) == bit)
+        if (((rt_uint32_t)0x01 << i) == bit)
         {
             return i;
         }
@@ -590,218 +229,223 @@ rt_inline rt_int32_t bit2bitno(rt_uint32_t bit)
     return -1;
 }
 
-/**
-  * @brief  pin write
-  * @param  pinbit
-  * @retval None
-  */
-rt_inline const struct pin_irq_map *get_pin_irq_map(rt_uint32_t pinbit)
+rt_inline const struct pin_irq_map *get_pin_irq_map(uint32_t pinbit)
 {
-    rt_int32_t map_index = bit2bitno(pinbit);
-    if (map_index < 0 || map_index >= ITEM_NUM(pin_irq_map))
+    rt_int32_t mapindex = bit2bitno(pinbit);
+    if (mapindex < 0 || mapindex >= (rt_int32_t)ITEM_NUM(pin_irq_map))
     {
         return RT_NULL;
     }
-    return &pin_irq_map[map_index];
-}
+    return &pin_irq_map[mapindex];
+};
 
-/**
-  * @brief  pin irq attach
-  * @param  device, pin, mode
-  * @retval None
-  */
-static rt_err_t gd32_pin_attach_irq(struct rt_device *device, rt_base_t pin,
-                                    rt_uint8_t mode, void (*hdr)(void *args), void *args)
+
+static rt_err_t n32_pin_attach_irq(struct rt_device *device, rt_base_t pin,
+                                   rt_uint8_t mode, void (*hdr)(void *args), void *args)
 {
-    const struct pin_index *index = RT_NULL;
     rt_base_t level;
-    rt_int32_t hdr_index = -1;
+    rt_int32_t irqindex = -1;
 
-    index = get_pin(pin);
-    if (index == RT_NULL)
+    if (PIN_PORT(pin) >= PIN_STPORT_MAX)
     {
-        return -RT_EINVAL;
+        return -RT_ENOSYS;
     }
 
-    hdr_index = bit2bitno(index->pin);
-    if (hdr_index < 0 || hdr_index >= ITEM_NUM(pin_irq_map))
+    irqindex = bit2bitno(PIN_STPIN(pin));
+    if (irqindex < 0 || irqindex >= (rt_int32_t)ITEM_NUM(pin_irq_map))
     {
-        return -RT_EINVAL;
+        return -RT_ENOSYS;
     }
 
     level = rt_hw_interrupt_disable();
-    if (pin_irq_hdr_tab[hdr_index].pin == pin &&
-        pin_irq_hdr_tab[hdr_index].hdr == hdr &&
-        pin_irq_hdr_tab[hdr_index].mode == mode &&
-        pin_irq_hdr_tab[hdr_index].args == args)
+
+    if (pin_irq_hdr_tab[irqindex].pin == pin &&
+            pin_irq_hdr_tab[irqindex].hdr == hdr &&
+            pin_irq_hdr_tab[irqindex].mode == mode &&
+            pin_irq_hdr_tab[irqindex].args == args)
     {
         rt_hw_interrupt_enable(level);
         return RT_EOK;
     }
-
-    if (pin_irq_hdr_tab[hdr_index].pin != -1)
+    if (pin_irq_hdr_tab[irqindex].pin != -1)
     {
         rt_hw_interrupt_enable(level);
-        return -RT_EFULL;
+        return -RT_EBUSY;
     }
-    pin_irq_hdr_tab[hdr_index].pin = pin;
-    pin_irq_hdr_tab[hdr_index].hdr = hdr;
-    pin_irq_hdr_tab[hdr_index].mode = mode;
-    pin_irq_hdr_tab[hdr_index].args = args;
+    pin_irq_hdr_tab[irqindex].pin = pin;
+    pin_irq_hdr_tab[irqindex].hdr = hdr;
+    pin_irq_hdr_tab[irqindex].mode = mode;
+    pin_irq_hdr_tab[irqindex].args = args;
+
     rt_hw_interrupt_enable(level);
 
     return RT_EOK;
 }
 
-/**
-  * @brief  pin irq detach
-  * @param  device, pin
-  * @retval None
-  */
-static rt_err_t gd32_pin_detach_irq(struct rt_device *device, rt_base_t pin)
+static rt_err_t n32_pin_dettach_irq(struct rt_device *device, rt_base_t pin)
 {
-    const struct pin_index *index = RT_NULL;
     rt_base_t level;
-    rt_int32_t hdr_index = -1;
+    rt_int32_t irqindex = -1;
 
-    index = get_pin(pin);
-    if (index == RT_NULL)
+    if (PIN_PORT(pin) >= PIN_STPORT_MAX)
     {
-        return -RT_EINVAL;
+        return -RT_ENOSYS;
     }
 
-    hdr_index = bit2bitno(index->pin);
-    if (hdr_index < 0 || hdr_index >= ITEM_NUM(pin_irq_map))
+    irqindex = bit2bitno(PIN_STPIN(pin));
+    if (irqindex < 0 || irqindex >= (rt_int32_t)ITEM_NUM(pin_irq_map))
     {
-        return -RT_EINVAL;
+        return -RT_ENOSYS;
     }
 
     level = rt_hw_interrupt_disable();
-    if (pin_irq_hdr_tab[hdr_index].pin == -1)
+
+    if (pin_irq_hdr_tab[irqindex].pin == -1)
     {
         rt_hw_interrupt_enable(level);
         return RT_EOK;
     }
-    pin_irq_hdr_tab[hdr_index].pin = -1;
-    pin_irq_hdr_tab[hdr_index].hdr = RT_NULL;
-    pin_irq_hdr_tab[hdr_index].mode = 0;
-    pin_irq_hdr_tab[hdr_index].args = RT_NULL;
+    pin_irq_hdr_tab[irqindex].pin = -1;
+    pin_irq_hdr_tab[irqindex].hdr = RT_NULL;
+    pin_irq_hdr_tab[irqindex].mode = 0;
+    pin_irq_hdr_tab[irqindex].args = RT_NULL;
+
     rt_hw_interrupt_enable(level);
 
     return RT_EOK;
 }
 
-/**
-  * @brief  pin irq enable
-  * @param  device, pin, enabled
-  * @retval None
-  */
-static rt_err_t gd32_pin_irq_enable(struct rt_device *device, rt_base_t pin, rt_uint8_t enabled)
+static rt_err_t n32_pin_irq_enable(struct rt_device *device, rt_base_t pin,
+                                   rt_uint8_t enabled)
 {
-    const struct pin_index *index;
     const struct pin_irq_map *irqmap;
     rt_base_t level;
-    rt_int32_t hdr_index = -1;
-    exti_trig_type_enum trigger_mode;
+    rt_int32_t irqindex = -1;
+    GPIO_InitType GPIO_InitStructure;
+    EXTI_InitType EXTI_InitStructure;
 
-    index = get_pin(pin);
-    if (index == RT_NULL)
+    if (PIN_PORT(pin) >= PIN_STPORT_MAX)
     {
-        return -RT_EINVAL;
+        return -RT_ENOSYS;
     }
 
     if (enabled == PIN_IRQ_ENABLE)
     {
-        hdr_index = bit2bitno(index->pin);
-        if (hdr_index < 0 || hdr_index >= ITEM_NUM(pin_irq_map))
+        irqindex = bit2bitno(PIN_STPIN(pin));
+        if (irqindex < 0 || irqindex >= (rt_int32_t)ITEM_NUM(pin_irq_map))
         {
-            return -RT_EINVAL;
+            return -RT_ENOSYS;
         }
 
         level = rt_hw_interrupt_disable();
-        if (pin_irq_hdr_tab[hdr_index].pin == -1)
+
+        if (pin_irq_hdr_tab[irqindex].pin == -1)
         {
             rt_hw_interrupt_enable(level);
-            return -RT_EINVAL;
+            return -RT_ENOSYS;
         }
 
-        irqmap = &pin_irq_map[hdr_index];
+        irqmap = &pin_irq_map[irqindex];
 
-        switch (pin_irq_hdr_tab[hdr_index].mode)
+        /* EXTI Line Config */
+#if defined(SOC_SERIES_N32H7xx)
+        GPIO_ConfigEXTILine(irqmap->exti_line, (PIN_NO(pin) * 11 + PIN_PORT(pin)));
+#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x) 
+        // PA8-->Pin8--> PIN_PORT(1000)=0, PIN_NO(1000)=8
+        // PB1-->Pin17--> PIN_PORT(10001)=1, PIN_NO(10001)=1
+        GPIO_ConfigEXTILine(PIN_NO(pin), PIN_PORT(pin), PIN_NO(pin));
+#endif
+        GPIO_InitStruct(&GPIO_InitStructure);
+        /* Configure GPIO_InitStructure */
+        GPIO_InitStructure.Pin = PIN_STPIN(pin);
+        GPIO_InitStructure.GPIO_Slew_Rate = GPIO_SLEW_RATE_FAST;
+
+        switch (pin_irq_hdr_tab[irqindex].mode)
         {
         case PIN_IRQ_MODE_RISING:
-            trigger_mode = EXTI_TRIG_RISING;
+            GPIO_InitStructure.GPIO_Mode = GPIO_MODE_INPUT;
+            GPIO_InitStructure.GPIO_Pull = GPIO_PULL_DOWN;
+            EXTI_InitStructure.EXTI_Trigger = EXTI_Trigger_Rising;
             break;
         case PIN_IRQ_MODE_FALLING:
-            trigger_mode = EXTI_TRIG_FALLING;
+            GPIO_InitStructure.GPIO_Mode = GPIO_MODE_INPUT;
+            GPIO_InitStructure.GPIO_Pull = GPIO_PULL_UP;
+            EXTI_InitStructure.EXTI_Trigger = EXTI_Trigger_Falling;
             break;
         case PIN_IRQ_MODE_RISING_FALLING:
-            trigger_mode = EXTI_TRIG_BOTH;
+            GPIO_InitStructure.GPIO_Mode = GPIO_MODE_INPUT;
+            GPIO_InitStructure.GPIO_Pull = GPIO_PULL_UP;
+            EXTI_InitStructure.EXTI_Trigger = EXTI_Trigger_Rising_Falling;
             break;
-        default:
-            rt_hw_interrupt_enable(level);
-            return -RT_EINVAL;
         }
+        GPIO_InitPeripheral(PIN_STPORT(pin), &GPIO_InitStructure);
 
-#if defined SOC_SERIES_GD32F4xx || defined SOC_SERIES_GD32H7xx || defined SOC_SERIES_GD32H75E || defined SOC_SERIES_GD32F5xx
-        rcu_periph_clock_enable(RCU_SYSCFG);
-#elif defined SOC_SERIES_GD32E23x
-        rcu_periph_clock_enable(RCU_CFGCMP);
-#else
-        rcu_periph_clock_enable(RCU_AF);
-#endif
+        EXTI_InitStructure.EXTI_Line = irqmap->exti_line;
+        EXTI_InitStructure.EXTI_Mode = EXTI_Mode_Interrupt;
+        EXTI_InitStructure.EXTI_LineCmd = ENABLE;
+        EXTI_InitPeripheral(&EXTI_InitStructure);
 
-        /* enable and set interrupt priority */
-#if defined SOC_SERIES_GD32E23x
-        nvic_irq_enable(irqmap->irqno, 5U);
-#else
-        nvic_irq_enable(irqmap->irqno, 5U, 0U);
-#endif
-        /* connect EXTI line to  GPIO pin */
-#if defined SOC_SERIES_GD32F4xx || defined SOC_SERIES_GD32H7xx || defined SOC_SERIES_GD32H75E || defined SOC_SERIES_GD32F5xx || defined SOC_SERIES_GD32E23x
-        syscfg_exti_line_config(index->port_src, index->pin_src);
-#else
-        gpio_exti_source_select(index->port_src, index->pin_src);
-#endif
+        /* Clear spurious pending bit caused by GPIO pull reconfiguration */
+        EXTI_ClrITPendBit(irqmap->exti_line);
 
-        /* configure EXTI line */
-        exti_init((exti_line_enum)(index->exit_line), EXTI_INTERRUPT, trigger_mode);
-        exti_interrupt_flag_clear((exti_line_enum)(index->exit_line));
+        NVIC_SetPriority(irqmap->irqno, NVIC_EncodePriority(NVIC_GetPriorityGrouping(), 5, 0));
+        NVIC_EnableIRQ(irqmap->irqno);
+        pin_irq_enable_mask |= irqmap->pinbit;
 
         rt_hw_interrupt_enable(level);
     }
     else if (enabled == PIN_IRQ_DISABLE)
     {
-        irqmap = get_pin_irq_map(index->pin);
+        irqmap = get_pin_irq_map(PIN_STPIN(pin));
         if (irqmap == RT_NULL)
         {
-            return -RT_EINVAL;
+            return -RT_ENOSYS;
         }
-        nvic_irq_disable(irqmap->irqno);
+
+        level = rt_hw_interrupt_disable();
+
+        pin_irq_enable_mask &= ~irqmap->pinbit;
+
+        if ((irqmap->pinbit >= GPIO_PIN_5) && (irqmap->pinbit <= GPIO_PIN_9))
+        {
+            if (!(pin_irq_enable_mask & (GPIO_PIN_5 | GPIO_PIN_6 | GPIO_PIN_7 | GPIO_PIN_8 | GPIO_PIN_9)))
+            {
+                NVIC_DisableIRQ(irqmap->irqno);
+            }
+        }
+        else if ((irqmap->pinbit >= GPIO_PIN_10) && (irqmap->pinbit <= GPIO_PIN_15))
+        {
+            if (!(pin_irq_enable_mask & (GPIO_PIN_10 | GPIO_PIN_11 | GPIO_PIN_12 | GPIO_PIN_13 | GPIO_PIN_14 | GPIO_PIN_15)))
+            {
+                NVIC_DisableIRQ(irqmap->irqno);
+            }
+        }
+        else
+        {
+            NVIC_DisableIRQ(irqmap->irqno);
+        }
+
+        rt_hw_interrupt_enable(level);
     }
     else
     {
-        return -RT_EINVAL;
+        return -RT_ENOSYS;
     }
 
     return RT_EOK;
 }
 
-const static struct rt_pin_ops gd32_pin_ops = {
-    .pin_mode = gd32_pin_mode,
-    .pin_write = gd32_pin_write,
-    .pin_read = gd32_pin_read,
-    .pin_attach_irq = gd32_pin_attach_irq,
-    .pin_detach_irq = gd32_pin_detach_irq,
-    .pin_irq_enable = gd32_pin_irq_enable,
-    RT_NULL,
+static const struct rt_pin_ops _n32_pin_ops =
+{
+    n32_pin_mode,
+    n32_pin_write,
+    n32_pin_read,
+    n32_pin_attach_irq,
+    n32_pin_dettach_irq,
+    n32_pin_irq_enable,
+    n32_pin_get,
 };
 
-/**
-  * @brief  pin write
-  * @param  irqno
-  * @retval None
-  */
 rt_inline void pin_irq_hdr(int irqno)
 {
     if (pin_irq_hdr_tab[irqno].hdr)
@@ -810,136 +454,235 @@ rt_inline void pin_irq_hdr(int irqno)
     }
 }
 
-/**
-  * @brief  gd32 exit interrupt
-  * @param  exti_line
-  * @retval None
-  */
-void GD32_GPIO_EXTI_IRQHandler(rt_int8_t exti_line)
+void N32_GPIO_EXTI_Callback(uint16_t line_num)
 {
-#if defined(SOC_SERIES_GD32H7xx) || defined(SOC_SERIES_GD32H75E)
-    exti_line_enum pin_exti_line = exti_line;
-#else
-    exti_line_enum pin_exti_line = 1 << exti_line;
-#endif
+#if defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x)
 
-    if (RESET != exti_interrupt_flag_get(pin_exti_line))
-    {
-        pin_irq_hdr(exti_line);
-        exti_interrupt_flag_clear(pin_exti_line);
+    if (EXTI_GetITStatus(line_num) != RESET)
+    {       
+        /* Clear EXTI line pending bit */
+        EXTI_ClrITPendBit(line_num);
+        
+        uint8_t index = 0;
+        uint32_t mask = line_num;
+
+        if (mask & 0xFF00)     { index += 8;  mask >>= 8; }
+        if (mask & 0xF0)       { index += 4;  mask >>= 4; }
+        if (mask & 0xC)        { index += 2;  mask >>= 2; }
+        if (mask & 0x2)        { index += 1; }
+        
+        if ((index < 16) && (pin_irq_hdr_tab[index].pin != -1))
+        {
+            pin_irq_hdr(index);
+        }
     }
+#elif defined(SOC_SERIES_N32H7xx)
+    if (pin_irq_hdr_tab[line_num].pin != -1 && EXTI_GetITStatus(line_num) != RESET)
+    {
+        /* Clear EXTI line pending bit */
+        EXTI_ClrITPendBit(line_num);
+
+        pin_irq_hdr(line_num);
+    }
+#endif
 }
 
-#if defined SOC_SERIES_GD32E23x
-void EXTI0_1_IRQHandler(void)
-{
-    rt_interrupt_enter();
-
-    GD32_GPIO_EXTI_IRQHandler(0);
-    GD32_GPIO_EXTI_IRQHandler(1);
-
-    rt_interrupt_leave();
-}
-
-void EXTI2_3_IRQHandler(void)
-{
-    rt_interrupt_enter();
-
-    GD32_GPIO_EXTI_IRQHandler(2);
-    GD32_GPIO_EXTI_IRQHandler(3);
-
-    rt_interrupt_leave();
-}
-
-void EXTI4_15_IRQHandler(void)
-{
-    rt_interrupt_enter();
-
-    GD32_GPIO_EXTI_IRQHandler(4);
-    GD32_GPIO_EXTI_IRQHandler(5);
-    GD32_GPIO_EXTI_IRQHandler(6);
-    GD32_GPIO_EXTI_IRQHandler(7);
-    GD32_GPIO_EXTI_IRQHandler(8);
-    GD32_GPIO_EXTI_IRQHandler(9);
-    GD32_GPIO_EXTI_IRQHandler(10);
-    GD32_GPIO_EXTI_IRQHandler(11);
-    GD32_GPIO_EXTI_IRQHandler(12);
-    GD32_GPIO_EXTI_IRQHandler(13);
-    GD32_GPIO_EXTI_IRQHandler(14);
-    GD32_GPIO_EXTI_IRQHandler(15);
-
-    rt_interrupt_leave();
-}
-#else
 void EXTI0_IRQHandler(void)
 {
     rt_interrupt_enter();
-    GD32_GPIO_EXTI_IRQHandler(0);
+    N32_GPIO_EXTI_Callback(EXTI_LINE0);
     rt_interrupt_leave();
 }
 
 void EXTI1_IRQHandler(void)
 {
     rt_interrupt_enter();
-    GD32_GPIO_EXTI_IRQHandler(1);
+    N32_GPIO_EXTI_Callback(EXTI_LINE1);
     rt_interrupt_leave();
 }
 
 void EXTI2_IRQHandler(void)
 {
     rt_interrupt_enter();
-    GD32_GPIO_EXTI_IRQHandler(2);
+    N32_GPIO_EXTI_Callback(EXTI_LINE2);
     rt_interrupt_leave();
 }
 
 void EXTI3_IRQHandler(void)
 {
     rt_interrupt_enter();
-    GD32_GPIO_EXTI_IRQHandler(3);
+    N32_GPIO_EXTI_Callback(EXTI_LINE3);
     rt_interrupt_leave();
 }
 
 void EXTI4_IRQHandler(void)
 {
     rt_interrupt_enter();
-    GD32_GPIO_EXTI_IRQHandler(4);
+    N32_GPIO_EXTI_Callback(EXTI_LINE4);
     rt_interrupt_leave();
 }
 
-void EXTI5_9_IRQHandler(void)
+void EXTI9_5_IRQHandler(void)
 {
     rt_interrupt_enter();
-    GD32_GPIO_EXTI_IRQHandler(5);
-    GD32_GPIO_EXTI_IRQHandler(6);
-    GD32_GPIO_EXTI_IRQHandler(7);
-    GD32_GPIO_EXTI_IRQHandler(8);
-    GD32_GPIO_EXTI_IRQHandler(9);
+    N32_GPIO_EXTI_Callback(EXTI_LINE5);
+    N32_GPIO_EXTI_Callback(EXTI_LINE6);
+    N32_GPIO_EXTI_Callback(EXTI_LINE7);
+    N32_GPIO_EXTI_Callback(EXTI_LINE8);
+    N32_GPIO_EXTI_Callback(EXTI_LINE9);
     rt_interrupt_leave();
 }
 
-void EXTI10_15_IRQHandler(void)
+void EXTI15_10_IRQHandler(void)
 {
     rt_interrupt_enter();
-    GD32_GPIO_EXTI_IRQHandler(10);
-    GD32_GPIO_EXTI_IRQHandler(11);
-    GD32_GPIO_EXTI_IRQHandler(12);
-    GD32_GPIO_EXTI_IRQHandler(13);
-    GD32_GPIO_EXTI_IRQHandler(14);
-    GD32_GPIO_EXTI_IRQHandler(15);
+    N32_GPIO_EXTI_Callback(EXTI_LINE10);
+    N32_GPIO_EXTI_Callback(EXTI_LINE11);
+    N32_GPIO_EXTI_Callback(EXTI_LINE12);
+    N32_GPIO_EXTI_Callback(EXTI_LINE13);
+    N32_GPIO_EXTI_Callback(EXTI_LINE14);
+    N32_GPIO_EXTI_Callback(EXTI_LINE15);
     rt_interrupt_leave();
 }
-#endif
 
 int rt_hw_pin_init(void)
 {
-    int result;
+#ifdef AFIO
+#if defined(SOC_SERIES_N32H7xx)
+    RCC_EnableAHB5PeriphClk2(RCC_AHB5_PERIPHEN_M7_AFIO, ENABLE);
+#if defined(SOC_N32H78X)
+    RCC_EnableAHB5PeriphClk2(RCC_AHB5_PERIPHEN_M4_AFIO, ENABLE);
+#endif /* SOC_N32H78X */
+#elif defined(SOC_SERIES_N32H49x) 
+    RCC_EnableAPB2PeriphClk(RCC_APB2_PERIPHEN_AFIO, ENABLE);
+#elif defined(SOC_SERIES_N32H47x_48x) 
+    RCC_EnableAPB2PeriphClk(RCC_APB2_PERIPH_AFIO, ENABLE);
+#endif
+#endif /* AFIO */
 
-    result = rt_device_pin_register("pin", &gd32_pin_ops, RT_NULL);
+#ifdef EXTI
+#if defined(SOC_SERIES_N32H7xx)
+    RCC_EnableAPB5PeriphClk2(RCC_APB5_PERIPHEN_EXTI, ENABLE);
+#endif
+#endif /* EXTI */
 
-    return result;
+#ifdef GPIOA
+#if defined(SOC_SERIES_N32H7xx)
+    RCC_EnableAHB5PeriphClk1(RCC_AHB5_PERIPHEN_M7_GPIOA, ENABLE);
+#if defined(SOC_N32H78X)
+    RCC_EnableAHB5PeriphClk1(RCC_AHB5_PERIPHEN_M4_GPIOA, ENABLE);
+#endif /* SOC_N32H78X */
+#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x) 
+    RCC_EnableAHB1PeriphClk(RCC_AHB_PERIPHEN_GPIOA, ENABLE);
+#endif
+#endif /* GPIOA */
+
+#ifdef GPIOB
+#if defined(SOC_SERIES_N32H7xx)
+    RCC_EnableAHB5PeriphClk1(RCC_AHB5_PERIPHEN_M7_GPIOB, ENABLE);
+#if defined(SOC_N32H78X)
+    RCC_EnableAHB5PeriphClk1(RCC_AHB5_PERIPHEN_M4_GPIOB, ENABLE);
+#endif /* SOC_N32H78X */
+#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x) 
+    RCC_EnableAHB1PeriphClk(RCC_AHB_PERIPHEN_GPIOB, ENABLE);
+#endif
+#endif /* GPIOB */
+
+#ifdef GPIOC
+#if defined(SOC_SERIES_N32H7xx)
+    RCC_EnableAHB5PeriphClk1(RCC_AHB5_PERIPHEN_M7_GPIOC, ENABLE);
+#if defined(SOC_N32H78X)
+    RCC_EnableAHB5PeriphClk1(RCC_AHB5_PERIPHEN_M4_GPIOC, ENABLE);
+#endif /* SOC_N32H78X */
+#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x) 
+    RCC_EnableAHB1PeriphClk(RCC_AHB_PERIPHEN_GPIOC, ENABLE);
+#endif
+#endif /* GPIOC */
+
+#ifdef GPIOD
+#if defined(SOC_SERIES_N32H7xx)
+    RCC_EnableAHB5PeriphClk1(RCC_AHB5_PERIPHEN_M7_GPIOD, ENABLE);
+#if defined(SOC_N32H78X)
+    RCC_EnableAHB5PeriphClk1(RCC_AHB5_PERIPHEN_M4_GPIOD, ENABLE);
+#endif /* SOC_N32H78X */
+#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x) 
+    RCC_EnableAHB1PeriphClk(RCC_AHB_PERIPHEN_GPIOD, ENABLE);
+#endif
+#endif /* GPIOD */
+
+#ifdef GPIOE
+#if defined(SOC_SERIES_N32H7xx)
+    RCC_EnableAHB5PeriphClk1(RCC_AHB5_PERIPHEN_M7_GPIOE, ENABLE);
+#if defined(SOC_N32H78X)
+    RCC_EnableAHB5PeriphClk1(RCC_AHB5_PERIPHEN_M4_GPIOE, ENABLE);
+#endif /* SOC_N32H78X */
+#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x) 
+    RCC_EnableAHB1PeriphClk(RCC_AHB_PERIPHEN_GPIOE, ENABLE);
+#endif
+#endif /* GPIOE */
+
+#ifdef GPIOF
+#if defined(SOC_SERIES_N32H7xx)
+    RCC_EnableAHB5PeriphClk1(RCC_AHB5_PERIPHEN_M7_GPIOF, ENABLE);
+#if defined(SOC_N32H78X)
+    RCC_EnableAHB5PeriphClk1(RCC_AHB5_PERIPHEN_M4_GPIOF, ENABLE);
+#endif /* SOC_N32H78X */
+#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x) 
+    RCC_EnableAHB1PeriphClk(RCC_AHB_PERIPHEN_GPIOF, ENABLE);
+#endif
+#endif /* GPIOF */
+
+#ifdef GPIOG
+#if defined(SOC_SERIES_N32H7xx)
+    RCC_EnableAHB5PeriphClk1(RCC_AHB5_PERIPHEN_M7_GPIOG, ENABLE);
+#if defined(SOC_N32H78X)
+    RCC_EnableAHB5PeriphClk1(RCC_AHB5_PERIPHEN_M4_GPIOG, ENABLE);
+#endif /* SOC_N32H78X */
+#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x) 
+    RCC_EnableAHB1PeriphClk(RCC_AHB_PERIPHEN_GPIOG, ENABLE);
+#endif
+#endif /* GPIOG */
+
+#ifdef GPIOH
+#if defined(SOC_SERIES_N32H7xx)
+    RCC_EnableAHB5PeriphClk1(RCC_AHB5_PERIPHEN_M7_GPIOH, ENABLE);
+#if defined(SOC_N32H78X)
+    RCC_EnableAHB5PeriphClk1(RCC_AHB5_PERIPHEN_M4_GPIOH, ENABLE);
+#endif /* SOC_N32H78X */
+#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x) 
+    RCC_EnableAHB1PeriphClk(RCC_AHB_PERIPHEN_GPIOH, ENABLE);
+#endif
+#endif /* GPIOH */
+
+#ifdef GPIOI
+#if defined(SOC_SERIES_N32H7xx)
+    RCC_EnableAHB5PeriphClk2(RCC_AHB5_PERIPHEN_M7_GPIOI, ENABLE);
+#if defined(SOC_N32H78X)
+    RCC_EnableAHB5PeriphClk2(RCC_AHB5_PERIPHEN_M4_GPIOI, ENABLE);
+#endif /* SOC_N32H78X */
+#endif
+#endif /* GPIOI */
+
+#ifdef GPIOJ
+#if defined(SOC_SERIES_N32H7xx)
+    RCC_EnableAHB5PeriphClk2(RCC_AHB5_PERIPHEN_M7_GPIOJ, ENABLE);
+#if defined(SOC_N32H78X)
+    RCC_EnableAHB5PeriphClk2(RCC_AHB5_PERIPHEN_M4_GPIOJ, ENABLE);
+#endif /* SOC_N32H78X */
+#endif
+#endif /* GPIOJ */
+
+#ifdef GPIOK
+#if defined(SOC_SERIES_N32H7xx)
+    RCC_EnableAHB5PeriphClk2(RCC_AHB5_PERIPHEN_M7_GPIOK, ENABLE);
+#if defined(SOC_N32H78X)
+    RCC_EnableAHB5PeriphClk2(RCC_AHB5_PERIPHEN_M4_GPIOK, ENABLE);
+#endif /* SOC_N32H78X */
+#endif
+#endif /* GPIOK */
+
+    return rt_device_pin_register("pin", &_n32_pin_ops, RT_NULL);
 }
 
-INIT_BOARD_EXPORT(rt_hw_pin_init);
-
-#endif
+#endif /* BSP_USING_GPIO */
 

@@ -479,6 +479,25 @@ static rt_err_t SPI_DMA_TransmitReceive(struct n32_spi *spi_drv, uint8_t *pTxDat
             SPI_Enable(spi_drv->config->SPIx, ENABLE);
             return -RT_ERROR;
         }
+#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x)
+        /* SPI RX DMA Receive Data for H49X */
+        DMA_EnableChannel(spi_drv->config->dma_rx->DMAChx, DISABLE);
+
+        /* Configure DMA request remapping */
+        DMA_RequestRemap(spi_drv->config->dma_rx->request, spi_drv->config->dma_rx->DMAChx, ENABLE);
+
+        spi_drv->dma.RX_DMA_ChInitStr.MemAddr = (uint32_t)pRxData;
+        spi_drv->dma.RX_DMA_ChInitStr.BufSize = Size;
+
+        DMA_Init(spi_drv->config->dma_rx->DMAChx, &spi_drv->dma.RX_DMA_ChInitStr);
+
+        /* Enable transfer complete interrupt */
+        DMA_ConfigInt(spi_drv->config->dma_rx->DMAChx, DMA_INT_TXC, ENABLE);
+
+        /* Enable the specified DMA channel */
+        DMA_EnableChannel(spi_drv->config->dma_rx->DMAChx, ENABLE);
+
+        SPI_I2S_EnableDma(spi_drv->config->SPIx, SPI_I2S_DMA_RX, ENABLE);
 #endif
     }
     else
@@ -499,6 +518,25 @@ static rt_err_t SPI_DMA_TransmitReceive(struct n32_spi *spi_drv, uint8_t *pTxDat
             SPI_Enable(spi_drv->config->SPIx, ENABLE);
             return -RT_ERROR;
         }
+#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x)
+        /* SPI TX DMA Send Data for H49X */
+        DMA_EnableChannel(spi_drv->config->dma_tx->DMAChx, DISABLE);
+
+        /* Configure DMA request remapping */
+        DMA_RequestRemap(spi_drv->config->dma_tx->request, spi_drv->config->dma_tx->DMAChx, ENABLE);
+
+        spi_drv->dma.TX_DMA_ChInitStr.MemAddr = (uint32_t)pTxData;
+        spi_drv->dma.TX_DMA_ChInitStr.BufSize = Size;
+
+        DMA_Init(spi_drv->config->dma_tx->DMAChx, &spi_drv->dma.TX_DMA_ChInitStr);
+
+        /* Enable transfer complete interrupt */
+        DMA_ConfigInt(spi_drv->config->dma_tx->DMAChx, DMA_INT_TXC, ENABLE);
+
+        /* Enable the specified DMA channel */
+        DMA_EnableChannel(spi_drv->config->dma_tx->DMAChx, ENABLE);
+
+        SPI_I2S_EnableDma(spi_drv->config->SPIx, SPI_I2S_DMA_TX, ENABLE);
 #endif
     }
     else
@@ -543,6 +581,14 @@ static rt_err_t SPI_DMA_Transmit(struct n32_spi *spi_drv, uint8_t *pData, uint16
         {
             return -RT_ERROR;
         }
+#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x)
+
+        DMA_EnableChannel(spi_drv->config->dma_rx->DMAChx, DISABLE);
+        spi_drv->dma.RX_DMA_ChInitStr.MemAddr = 0;
+        spi_drv->dma.RX_DMA_ChInitStr.BufSize = 0;
+
+        DMA_EnableChannel(spi_drv->config->dma_rx->DMAChx, ENABLE);
+        DMA_Init(spi_drv->config->dma_rx->DMAChx, &spi_drv->dma.RX_DMA_ChInitStr);
 #endif
     }
 
@@ -551,6 +597,25 @@ static rt_err_t SPI_DMA_Transmit(struct n32_spi *spi_drv, uint8_t *pData, uint16
 #if defined(SOC_SERIES_N32H7xx)
         /* SPI TX DMA send (single block or seamless LLI chain) */
         n32_spi_dma_arm(spi_drv, RT_FALSE, RT_TRUE, pData, Size);
+#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x)
+        /* SPI TX DMA Send Data for H49X */
+        DMA_EnableChannel(spi_drv->config->dma_tx->DMAChx, DISABLE);
+
+        /* Configure DMA request remapping */
+        DMA_RequestRemap(spi_drv->config->dma_tx->request, spi_drv->config->dma_tx->DMAChx, ENABLE);
+
+        spi_drv->dma.TX_DMA_ChInitStr.MemAddr = (uint32_t)pData;
+        spi_drv->dma.TX_DMA_ChInitStr.BufSize = Size;
+
+        DMA_Init(spi_drv->config->dma_tx->DMAChx, &spi_drv->dma.TX_DMA_ChInitStr);
+
+        /* Enable transfer complete interrupt */
+        DMA_ConfigInt(spi_drv->config->dma_tx->DMAChx, DMA_INT_TXC, ENABLE);
+
+        /* Enable the specified DMA channel */
+        DMA_EnableChannel(spi_drv->config->dma_tx->DMAChx, ENABLE);
+
+        SPI_I2S_EnableDma(spi_drv->config->SPIx, SPI_I2S_DMA_TX, ENABLE);
 #endif
     }
     else
@@ -633,6 +698,25 @@ static rt_err_t SPI_DMA_Receive(struct n32_spi *spi_drv, uint8_t *pData, uint16_
 #if defined(SOC_SERIES_N32H7xx)
         /* SPI RX DMA receive (single block or seamless LLI chain) */
         n32_spi_dma_arm(spi_drv, RT_TRUE, RT_TRUE, pData, Size);
+#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x)
+        /* SPI RX DMA Receive Data for H49X */
+        DMA_EnableChannel(spi_drv->config->dma_rx->DMAChx, DISABLE);
+
+        /* Configure DMA request remapping */
+        DMA_RequestRemap(spi_drv->config->dma_rx->request, spi_drv->config->dma_rx->DMAChx, ENABLE);
+
+        spi_drv->dma.RX_DMA_ChInitStr.MemAddr = (uint32_t)pData;
+        spi_drv->dma.RX_DMA_ChInitStr.BufSize = Size;
+
+        DMA_Init(spi_drv->config->dma_rx->DMAChx, &spi_drv->dma.RX_DMA_ChInitStr);
+
+        /* Enable transfer complete interrupt */
+        DMA_ConfigInt(spi_drv->config->dma_rx->DMAChx, DMA_INT_TXC, ENABLE);
+
+        /* Enable the specified DMA channel */
+        DMA_EnableChannel(spi_drv->config->dma_rx->DMAChx, ENABLE);
+
+        SPI_I2S_EnableDma(spi_drv->config->SPIx, SPI_I2S_DMA_RX, ENABLE);
 #endif
     }
     else
@@ -649,6 +733,16 @@ static rt_err_t SPI_DMA_Receive(struct n32_spi *spi_drv, uint8_t *pData, uint16_
         {
             return -RT_ERROR;
         }
+#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x)
+
+        DMA_EnableChannel(spi_drv->config->dma_tx->DMAChx, DISABLE);
+
+        spi_drv->dma.TX_DMA_ChInitStr.MemAddr = 0;
+        spi_drv->dma.TX_DMA_ChInitStr.BufSize = 0;
+
+        DMA_EnableChannel(spi_drv->config->dma_tx->DMAChx, ENABLE);
+        DMA_Init(spi_drv->config->dma_tx->DMAChx, &spi_drv->dma.TX_DMA_ChInitStr);
+
 #endif
     }
 
@@ -1401,6 +1495,20 @@ static rt_err_t n32_spi_init(struct n32_spi *spi_drv, struct rt_spi_configuratio
     {
         return -RT_EIO;
     }
+#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x)
+
+    RCC_ClocksType RCC_ClockFreq = { 0 };
+
+    RCC_GetClocksFreqValue(&RCC_ClockFreq);
+
+    if ((spi_drv->config->SPIx == SPI1) || (spi_drv->config->SPIx == SPI4) || (spi_drv->config->SPIx == SPI5) || (spi_drv->config->SPIx == SPI6))
+    {
+        SPI_CLOCK = RCC_ClockFreq.Pclk2Freq;
+    }
+    else if ((spi_drv->config->SPIx == SPI2) || (spi_drv->config->SPIx == SPI3))
+    {
+        SPI_CLOCK = RCC_ClockFreq.Pclk1Freq;
+    }
 #endif
 
     if (cfg->max_hz >= SPI_CLOCK / 2)
@@ -1471,6 +1579,9 @@ static rt_err_t n32_spi_init(struct n32_spi *spi_drv, struct rt_spi_configuratio
 #if defined(SOC_SERIES_N32H7xx)
             spi_drv->dma.RX_DMA_ChInitStr.SrcTfrWidth = DMA_CH_TRANSFER_WIDTH_8;
             spi_drv->dma.RX_DMA_ChInitStr.DstTfrWidth = DMA_CH_TRANSFER_WIDTH_8;
+#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x)
+            spi_drv->dma.RX_DMA_ChInitStr.PeriphDataSize = DMA_PERIPH_DATA_WIDTH_BYTE;
+            spi_drv->dma.RX_DMA_ChInitStr.MemDataSize = DMA_MEM_DATA_WIDTH_BYTE;
 #endif
         }
         else if (cfg->data_width == 16)
@@ -1478,6 +1589,9 @@ static rt_err_t n32_spi_init(struct n32_spi *spi_drv, struct rt_spi_configuratio
 #if defined(SOC_SERIES_N32H7xx)
             spi_drv->dma.RX_DMA_ChInitStr.SrcTfrWidth = DMA_CH_TRANSFER_WIDTH_16;
             spi_drv->dma.RX_DMA_ChInitStr.DstTfrWidth = DMA_CH_TRANSFER_WIDTH_16;
+#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x)
+            spi_drv->dma.RX_DMA_ChInitStr.PeriphDataSize = DMA_PERIPH_DATA_WIDTH_HALFWORD;
+            spi_drv->dma.RX_DMA_ChInitStr.MemDataSize = DMA_MEM_DATA_WIDTH_HALFWORD;
 #endif
         }
 
@@ -1493,6 +1607,9 @@ static rt_err_t n32_spi_init(struct n32_spi *spi_drv, struct rt_spi_configuratio
 #if defined(SOC_SERIES_N32H7xx)
             spi_drv->dma.TX_DMA_ChInitStr.SrcTfrWidth = DMA_CH_TRANSFER_WIDTH_8;
             spi_drv->dma.TX_DMA_ChInitStr.DstTfrWidth = DMA_CH_TRANSFER_WIDTH_8;
+#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x)
+            spi_drv->dma.TX_DMA_ChInitStr.PeriphDataSize = DMA_PERIPH_DATA_WIDTH_BYTE;
+            spi_drv->dma.TX_DMA_ChInitStr.MemDataSize = DMA_MEM_DATA_WIDTH_BYTE;
 #endif
         }
         else if (cfg->data_width == 16)
@@ -1500,6 +1617,9 @@ static rt_err_t n32_spi_init(struct n32_spi *spi_drv, struct rt_spi_configuratio
 #if defined(SOC_SERIES_N32H7xx)
             spi_drv->dma.TX_DMA_ChInitStr.SrcTfrWidth = DMA_CH_TRANSFER_WIDTH_16;
             spi_drv->dma.TX_DMA_ChInitStr.DstTfrWidth = DMA_CH_TRANSFER_WIDTH_16;
+#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x)
+            spi_drv->dma.TX_DMA_ChInitStr.PeriphDataSize = DMA_PERIPH_DATA_WIDTH_HALFWORD;
+            spi_drv->dma.TX_DMA_ChInitStr.MemDataSize = DMA_MEM_DATA_WIDTH_HALFWORD;
 #endif
         }
 
@@ -1690,6 +1810,18 @@ static rt_ssize_t spixfer(struct rt_spi_device *device, struct rt_spi_message *m
         {
             send_length = arm_max;
             message_length = message_length - arm_max;
+        }
+        else
+        {
+            send_length = message_length;
+            message_length = 0;
+        }
+#else
+        /* DMA uses a single block, with a maximum of 4095 per block */
+        if (message_length > 4095)
+        {
+            send_length = 4095;
+            message_length = message_length - 4095;
         }
         else
         {
@@ -2270,6 +2402,36 @@ static int rt_hw_spi_bus_init(void)
                 LOG_E("SPI RX DMA channel initialization failed!");
                 return -RT_ERROR;
             }
+#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x)
+            /* Configure the SPI RX DMA for Transmission process */
+            /* Enable DMA clock */
+            RCC_EnableAHBPeriphClk(spi_bus_obj[i].config->dma_rx->dma_rcc, ENABLE);
+
+            /* Receive DMA Config */
+            DMA_StructInit(&spi_bus_obj[i].dma.RX_DMA_ChInitStr);
+            spi_bus_obj[i].dma.RX_DMA_ChInitStr.PeriphAddr = (uint32_t)&spi_bus_obj[i].config->SPIx->DAT;
+            spi_bus_obj[i].dma.RX_DMA_ChInitStr.MemAddr = 0;
+            spi_bus_obj[i].dma.RX_DMA_ChInitStr.Direction = DMA_DIR_PERIPH_SRC;
+            spi_bus_obj[i].dma.RX_DMA_ChInitStr.BufSize = 0;
+            spi_bus_obj[i].dma.RX_DMA_ChInitStr.PeriphInc = DMA_PERIPH_INC_DISABLE;
+            spi_bus_obj[i].dma.RX_DMA_ChInitStr.MemoryInc = DMA_MEM_INC_ENABLE;
+            spi_bus_obj[i].dma.RX_DMA_ChInitStr.PeriphDataSize = DMA_PERIPH_DATA_WIDTH_BYTE;
+            spi_bus_obj[i].dma.RX_DMA_ChInitStr.MemDataSize = DMA_MEM_DATA_WIDTH_BYTE;
+            spi_bus_obj[i].dma.RX_DMA_ChInitStr.CircularMode = DMA_MODE_NORMAL;
+            spi_bus_obj[i].dma.RX_DMA_ChInitStr.Priority = DMA_PRIORITY_HIGH;
+            spi_bus_obj[i].dma.RX_DMA_ChInitStr.Mem2Mem = DMA_M2M_DISABLE;
+#if defined(SOC_SERIES_N32H49x)
+            spi_bus_obj[i].dma.RX_DMA_ChInitStr.BurstCmd = DMA_BURST_DISABLE;
+#endif
+            /* Initialize the specified DMA channel and Whether the specified channel was successfully initialized */
+            DMA_Init(spi_bus_obj[i].config->dma_rx->DMAChx, &spi_bus_obj[i].dma.RX_DMA_ChInitStr);
+
+            /* Enable transfer complete interrupt */
+            DMA_ConfigInt(spi_bus_obj[i].config->dma_rx->DMAChx, DMA_INT_TXC, ENABLE);
+
+            spi_bus_obj[i].dma.DMA_Rx_Init = RT_TRUE;
+
+
 #endif
         }
 
@@ -2324,6 +2486,36 @@ static int rt_hw_spi_bus_init(void)
                 LOG_E("SPI TX DMA channel initialization failed!");
                 return -RT_ERROR;
             }
+#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x)
+            /* Configure the SPI TX DMA for Transmission process */
+            /* Enable DMA clock */
+            RCC_EnableAHBPeriphClk(spi_bus_obj[i].config->dma_tx->dma_rcc, ENABLE);
+
+            /* SPI_MASTER_Tx_DMA_Channel DMA1 Channel1 configuration ---------------------------------------------*/
+            DMA_StructInit(&spi_bus_obj[i].dma.TX_DMA_ChInitStr);
+            spi_bus_obj[i].dma.TX_DMA_ChInitStr.PeriphAddr = (uint32_t)&spi_bus_obj[i].config->SPIx->DAT;
+            spi_bus_obj[i].dma.TX_DMA_ChInitStr.MemAddr = 0;
+            spi_bus_obj[i].dma.TX_DMA_ChInitStr.Direction = DMA_DIR_PERIPH_DST;
+            spi_bus_obj[i].dma.TX_DMA_ChInitStr.BufSize = 0;
+            spi_bus_obj[i].dma.TX_DMA_ChInitStr.PeriphInc = DMA_PERIPH_INC_DISABLE;
+            spi_bus_obj[i].dma.TX_DMA_ChInitStr.MemoryInc = DMA_MEM_INC_ENABLE;
+            spi_bus_obj[i].dma.TX_DMA_ChInitStr.PeriphDataSize = DMA_PERIPH_DATA_WIDTH_BYTE;
+            spi_bus_obj[i].dma.TX_DMA_ChInitStr.MemDataSize = DMA_MEM_DATA_WIDTH_BYTE;
+            spi_bus_obj[i].dma.TX_DMA_ChInitStr.CircularMode = DMA_MODE_NORMAL;
+            spi_bus_obj[i].dma.TX_DMA_ChInitStr.Priority = DMA_PRIORITY_HIGH;
+            spi_bus_obj[i].dma.TX_DMA_ChInitStr.Mem2Mem = DMA_M2M_DISABLE;
+#if defined(SOC_SERIES_N32H49x)
+            spi_bus_obj[i].dma.TX_DMA_ChInitStr.BurstCmd = DMA_BURST_DISABLE;
+#endif
+            /* Initialize the specified DMA channel and Whether the specified channel was successfully initialized */
+            DMA_Init(spi_bus_obj[i].config->dma_tx->DMAChx, &spi_bus_obj[i].dma.TX_DMA_ChInitStr);
+
+            /* Enable transfer complete interrupt */
+            DMA_ConfigInt(spi_bus_obj[i].config->dma_tx->DMAChx, DMA_INT_TXC, ENABLE);
+
+            spi_bus_obj[i].dma.DMA_Tx_Init = RT_TRUE;
+
+
 #endif
         }
 
@@ -2387,6 +2579,8 @@ static void spi_isr(struct n32_spi *spi_drv)
         {
 #if defined(SOC_SERIES_N32H7xx)
             DMA_ChannelEventCmd(spi_drv->config->dma_tx->Instance, spi_drv->config->dma_tx->dma_channel, DMA_CH_EVENT_TRANSFER_COMPLETE, DISABLE);
+#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x)
+            DMA_ConfigInt(spi_drv->config->dma_tx->DMAChx, DMA_INT_TXC, DISABLE);
 #endif
         }
 
@@ -2394,6 +2588,8 @@ static void spi_isr(struct n32_spi *spi_drv)
         {
 #if defined(SOC_SERIES_N32H7xx)
             DMA_ChannelEventCmd(spi_drv->config->dma_rx->Instance, spi_drv->config->dma_rx->dma_channel, DMA_CH_EVENT_TRANSFER_COMPLETE, DISABLE);
+#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x)
+            DMA_ConfigInt(spi_drv->config->dma_rx->DMAChx, DMA_INT_TXC, DISABLE);
 #endif
         }
 
@@ -2418,6 +2614,78 @@ static void spi_rx_dma_isr(struct n32_spi *spi_drv)
     {
         if (DMA_GetChannelIntTfrStatus(spi_drv->config->dma_rx->Instance, spi_drv->config->dma_rx->dma_channel) == SET)
         {
+#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x)
+    DMA_Module *dma_module = (DMA_Module *)((uint32_t)spi_drv->config->dma_rx->DMAChx < DMA2_BASE ? DMA1 : DMA2);
+    uint32_t dma_int_tc = 0;
+
+    /* Obtain the corresponding interrupt flag macro based on the channel */
+    if (spi_drv->config->dma_rx->DMAChx == DMA1_CH1)
+    {
+        dma_int_tc = DMA_INT_TXC1;
+    }
+    else if (spi_drv->config->dma_rx->DMAChx == DMA1_CH2)
+    {
+        dma_int_tc = DMA_INT_TXC2;
+    }
+    else if (spi_drv->config->dma_rx->DMAChx == DMA1_CH3)
+    {
+        dma_int_tc = DMA_INT_TXC3;
+    }
+    else if (spi_drv->config->dma_rx->DMAChx == DMA1_CH4)
+    {
+        dma_int_tc = DMA_INT_TXC4;
+    }
+    else if (spi_drv->config->dma_rx->DMAChx == DMA1_CH5)
+    {
+        dma_int_tc = DMA_INT_TXC5;
+    }
+    else if (spi_drv->config->dma_rx->DMAChx == DMA1_CH6)
+    {
+        dma_int_tc = DMA_INT_TXC6;
+    }
+    else if (spi_drv->config->dma_rx->DMAChx == DMA1_CH7)
+    {
+        dma_int_tc = DMA_INT_TXC7;
+    }
+    else if (spi_drv->config->dma_rx->DMAChx == DMA1_CH8)
+    {
+        dma_int_tc = DMA_INT_TXC8;
+    }
+    else if (spi_drv->config->dma_rx->DMAChx == DMA2_CH1)
+    {
+        dma_int_tc = DMA_INT_TXC1;
+    }
+    else if (spi_drv->config->dma_rx->DMAChx == DMA2_CH2)
+    {
+        dma_int_tc = DMA_INT_TXC2;
+    }
+    else if (spi_drv->config->dma_rx->DMAChx == DMA2_CH3)
+    {
+        dma_int_tc = DMA_INT_TXC3;
+    }
+    else if (spi_drv->config->dma_rx->DMAChx == DMA2_CH4)
+    {
+        dma_int_tc = DMA_INT_TXC4;
+    }
+    else if (spi_drv->config->dma_rx->DMAChx == DMA2_CH5)
+    {
+        dma_int_tc = DMA_INT_TXC5;
+    }
+    else if (spi_drv->config->dma_rx->DMAChx == DMA2_CH6)
+    {
+        dma_int_tc = DMA_INT_TXC6;
+    }
+    else if (spi_drv->config->dma_rx->DMAChx == DMA2_CH7)
+    {
+        dma_int_tc = DMA_INT_TXC7;
+    }
+    else if (spi_drv->config->dma_rx->DMAChx == DMA2_CH8)
+    {
+        dma_int_tc = DMA_INT_TXC8;
+    }
+
+    if (dma_int_tc != 0 && DMA_GetIntStatus(dma_int_tc, dma_module) == SET)
+    {
 #endif
             if (spi_drv->Direct == SPI_Tx_Rx)
             {
@@ -2430,6 +2698,9 @@ static void spi_rx_dma_isr(struct n32_spi *spi_drv)
                  * RDMAEN would re-trigger after the slave completes */
                 DMA_ChannelCmd(spi_drv->config->dma_rx->Instance, spi_drv->config->dma_rx->dma_channel, DISABLE);
                 DMA_ChannelCmd(spi_drv->config->dma_tx->Instance, spi_drv->config->dma_tx->dma_channel, DISABLE);
+#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x)
+            DMA_ConfigInt(spi_drv->config->dma_rx->DMAChx, DMA_INT_TXC, DISABLE);
+            DMA_ConfigInt(spi_drv->config->dma_tx->DMAChx, DMA_INT_TXC, DISABLE);
 #endif
 
                 if (spi_drv->SPI_InitStructure.DataDirection == SPI_DIR_DOUBLELINE_FULLDUPLEX)
@@ -2475,6 +2746,8 @@ static void spi_rx_dma_isr(struct n32_spi *spi_drv)
 
 #if defined(SOC_SERIES_N32H7xx)
                 DMA_ChannelEventCmd(spi_drv->config->dma_rx->Instance, spi_drv->config->dma_rx->dma_channel, DMA_CH_EVENT_TRANSFER_COMPLETE, DISABLE);
+#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x)
+            DMA_ConfigInt(spi_drv->config->dma_rx->DMAChx, DMA_INT_TXC, DISABLE);
 #endif
 
                 SPI_I2S_ReceiveData(spi_drv->config->SPIx);
@@ -2487,8 +2760,11 @@ static void spi_rx_dma_isr(struct n32_spi *spi_drv)
 #if defined(SOC_SERIES_N32H7xx)
             /* Clear interrupt event status */
             DMA_ClearChannelEventStatus(spi_drv->config->dma_rx->Instance, spi_drv->config->dma_rx->dma_channel, DMA_CH_EVENT_TRANSFER_COMPLETE);
-#endif
         }
+#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x)
+            /* Clear interrupt event status */
+        DMA_ClrIntPendingBit(dma_int_tc, dma_module);
+#endif
     }
 }
 #endif
@@ -2500,12 +2776,89 @@ static void spi_tx_dma_isr(struct n32_spi *spi_drv)
     {
         if (DMA_GetChannelIntTfrStatus(spi_drv->config->dma_tx->Instance, spi_drv->config->dma_tx->dma_channel) == SET)
         {
+#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x)
+    DMA_Module *dma_module = (DMA_Module *)((uint32_t)spi_drv->config->dma_tx->DMAChx < DMA2_BASE ? DMA1 : DMA2);
+    uint32_t dma_int_tc = 0;
+
+    if (spi_drv->config->dma_tx->DMAChx == DMA1_CH1)
+    {
+        dma_int_tc = DMA_INT_TXC1;
+    }
+    else if (spi_drv->config->dma_tx->DMAChx == DMA1_CH2)
+    {
+        dma_int_tc = DMA_INT_TXC2;
+    }
+    else if (spi_drv->config->dma_tx->DMAChx == DMA1_CH3)
+    {
+        dma_int_tc = DMA_INT_TXC3;
+    }
+    else if (spi_drv->config->dma_tx->DMAChx == DMA1_CH4)
+    {
+        dma_int_tc = DMA_INT_TXC4;
+    }
+    else if (spi_drv->config->dma_tx->DMAChx == DMA1_CH5)
+    {
+        dma_int_tc = DMA_INT_TXC5;
+    }
+    else if (spi_drv->config->dma_tx->DMAChx == DMA1_CH6)
+    {
+        dma_int_tc = DMA_INT_TXC6;
+    }
+    else if (spi_drv->config->dma_tx->DMAChx == DMA1_CH7)
+    {
+        dma_int_tc = DMA_INT_TXC7;
+    }
+    else if (spi_drv->config->dma_tx->DMAChx == DMA1_CH8)
+    {
+        dma_int_tc = DMA_INT_TXC8;
+    }
+    else if (spi_drv->config->dma_tx->DMAChx == DMA2_CH1)
+    {
+        dma_int_tc = DMA_INT_TXC1;
+    }
+    else if (spi_drv->config->dma_tx->DMAChx == DMA2_CH2)
+    {
+        dma_int_tc = DMA_INT_TXC2;
+    }
+    else if (spi_drv->config->dma_tx->DMAChx == DMA2_CH3)
+    {
+        dma_int_tc = DMA_INT_TXC3;
+    }
+    else if (spi_drv->config->dma_tx->DMAChx == DMA2_CH4)
+    {
+        dma_int_tc = DMA_INT_TXC4;
+    }
+    else if (spi_drv->config->dma_tx->DMAChx == DMA2_CH5)
+    {
+        dma_int_tc = DMA_INT_TXC5;
+    }
+    else if (spi_drv->config->dma_tx->DMAChx == DMA2_CH6)
+    {
+        dma_int_tc = DMA_INT_TXC6;
+    }
+    else if (spi_drv->config->dma_tx->DMAChx == DMA2_CH7)
+    {
+        dma_int_tc = DMA_INT_TXC7;
+    }
+    else if (spi_drv->config->dma_tx->DMAChx == DMA2_CH8)
+    {
+        dma_int_tc = DMA_INT_TXC8;
+    }
+
+    if (dma_int_tc != 0 && DMA_GetIntStatus(dma_int_tc, dma_module) == SET)
+    {
 #endif
             if (spi_drv->Direct == SPI_Tx)
             {
+#if defined(SOC_SERIES_N32H7xx)
                 DMA_ChannelEventCmd(spi_drv->config->dma_tx->Instance, spi_drv->config->dma_tx->dma_channel, DMA_CH_EVENT_TRANSFER_COMPLETE, DISABLE);
 
                 SPI_I2S_EnableDma(spi_drv->config->SPIx, SPI_I2S_DMA_TX, DISABLE);
+#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x)
+            SPI_I2S_EnableInt(spi_drv->config->SPIx, SPI_I2S_INT_ERR, DISABLE);
+
+            SPI_I2S_EnableDma(spi_drv->config->SPIx, SPI_I2S_DMA_TX, DISABLE);
+#endif
 
                 SPI_I2S_ReceiveData(spi_drv->config->SPIx);
                 SPI_I2S_GetStatus(spi_drv->config->SPIx, SPI_I2S_OVER_FLAG);
@@ -2514,10 +2867,16 @@ static void spi_tx_dma_isr(struct n32_spi *spi_drv)
                 rt_completion_done(&spi_drv->cpt);
             }
 
+#if defined(SOC_SERIES_N32H7xx)
             /* Clear interrupt event status */
             DMA_ClearChannelEventStatus(spi_drv->config->dma_tx->Instance, spi_drv->config->dma_tx->dma_channel, DMA_CH_EVENT_TRANSFER_COMPLETE);
         }
     }
+#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x)
+            /* Clear interrupt event status */
+        DMA_ClrIntPendingBit(dma_int_tc, dma_module);
+    }
+#endif
 }
 #endif
 
@@ -2560,7 +2919,11 @@ void SPI1_TX_DMA_IRQHandler(void)
 
 
 #if defined(BSP_SPI2_TX_USING_DMA) || defined(BSP_SPI2_RX_USING_DMA)
+#if defined(SOC_SERIES_N32H7xx)
 void SPI2_IRQHandler(void)
+#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x)
+void SPI2_I2S2_IRQHandler(void)
+#endif
 {
     /* enter interrupt */
     rt_interrupt_enter();
@@ -2598,7 +2961,11 @@ void SPI2_TX_DMA_IRQHandler(void)
 
 
 #if defined(BSP_SPI3_TX_USING_DMA) || defined(BSP_SPI3_RX_USING_DMA)
+#if defined(SOC_SERIES_N32H7xx)
 void SPI3_IRQHandler(void)
+#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x)
+void SPI3_I2S3_IRQHandler(void)
+#endif
 {
     /* enter interrupt */
     rt_interrupt_enter();

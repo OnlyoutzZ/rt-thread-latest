@@ -17,6 +17,7 @@
 #include <drv_common.h>
 #include "drv_dma.h"
 #include <ipc/completion.h>
+#include "drv_config.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -78,6 +79,7 @@ struct n32_spi
     SPI_InitType SPI_InitStructure;
     SPI_Work_Direct_t Direct;
 
+#if defined(SOC_SERIES_N32H7xx)
     struct
     {
         rt_bool_t DMA_Tx_Init;
@@ -90,6 +92,16 @@ struct n32_spi
         DMA_LinkListItemType lli_rx[SPI_DMA_CHAIN_NODES];
         DMA_LinkListItemType lli_tx[SPI_DMA_CHAIN_NODES];
     } dma;
+#elif defined(SOC_SERIES_N32H49x) || defined(SOC_SERIES_N32H47x_48x)
+    struct
+    {
+        rt_bool_t DMA_Tx_Init;
+        DMA_InitType TX_DMA_ChInitStr;
+
+        rt_bool_t DMA_Rx_Init;
+        DMA_InitType RX_DMA_ChInitStr;
+    } dma;
+#endif
 
     rt_uint8_t spi_dma_flag;
     /* TRUE while a 4-wire full-duplex MASTER receive-only message is being
