@@ -6,6 +6,8 @@
  * Change Logs:
  * Date           Author       Notes
  * 2026-06-23     ox-horse     first version
+ * 2026-08-19     ox-horse     Add N32H47X_48X
+ * 2026-08-19     ox-horse     Add N32H49X
  */
 
 #include <board.h>
@@ -22,22 +24,19 @@
  * mutual exclusivity, otherwise ISR symbol conflicts will occur at link time.
  */
 
+#if defined(SOC_SERIES_N32H7xx)
 #if !defined(BSP_USING_PULSE_ENCODER1) && !defined(BSP_USING_PULSE_ENCODER2) && !defined(BSP_USING_PULSE_ENCODER3) && !defined(BSP_USING_PULSE_ENCODER4) && !defined(BSP_USING_PULSE_ENCODER5) && !defined(BSP_USING_PULSE_ENCODER6) && !defined(BSP_USING_PULSE_ENCODER7) && !defined(BSP_USING_PULSE_ENCODER8) && !defined(BSP_USING_PULSE_ENCODER9) && !defined(BSP_USING_PULSE_ENCODER10) && !defined(BSP_USING_PULSE_ENCODER11) && !defined(BSP_USING_PULSE_ENCODER12) && !defined(BSP_USING_PULSE_ENCODER13) && !defined(BSP_USING_PULSE_ENCODER14)
 #error "Please define at least one BSP_USING_PULSE_ENCODERx"
 #endif
+#elif defined(SOC_SERIES_N32H47x_48x) || defined(SOC_SERIES_N32H49x)
+#if !defined(BSP_USING_PULSE_ENCODER1) && !defined(BSP_USING_PULSE_ENCODER2) && !defined(BSP_USING_PULSE_ENCODER3) && !defined(BSP_USING_PULSE_ENCODER5) && !defined(BSP_USING_PULSE_ENCODER6) && !defined(BSP_USING_PULSE_ENCODER7) && !defined(BSP_USING_PULSE_ENCODER8) && !defined(BSP_USING_PULSE_ENCODER9) && !defined(BSP_USING_PULSE_ENCODER10) && !defined(BSP_USING_PULSE_ENCODER11) && !defined(BSP_USING_PULSE_ENCODER12) && !defined(BSP_USING_PULSE_ENCODER13) && !defined(BSP_USING_PULSE_ENCODER14)
+#error "Please define at least one BSP_USING_PULSE_ENCODERx"
+#endif
+#endif /* SOC_SERIES_N32H7xx */
 
-/* Auto-reload value for encoder mode. Using half of the 16-bit range
+/* Auto-reload value for 16-bit encoder mode. Using half of the range
  * allows for overflow tracking in both directions. */
 #define AUTO_RELOAD_VALUE 0x7FFF
-
-/*
- * N32H7xx pulse encoder device mapping:
- *   ATIM1-4  -> pulse_encoder1-4  (advanced, with encoder support)
- *   GTIMA1-7 -> pulse_encoder5-11 (general purpose, A bus)
- *   GTIMB1-3 -> pulse_encoder12-14 (general purpose, B bus)
- *
- * BTIM1-4 (basic timers) do NOT support encoder mode.
- */
 
 enum
 {
@@ -50,9 +49,11 @@ enum
 #ifdef BSP_USING_PULSE_ENCODER3
     PULSE_ENCODER3_INDEX,
 #endif
+#if defined(SOC_SERIES_N32H7xx)
 #ifdef BSP_USING_PULSE_ENCODER4
     PULSE_ENCODER4_INDEX,
 #endif
+#endif /* SOC_SERIES_N32H7xx */
 #ifdef BSP_USING_PULSE_ENCODER5
     PULSE_ENCODER5_INDEX,
 #endif
@@ -104,9 +105,11 @@ static struct n32_pulse_encoder_device n32_pulse_encoder_obj[] = {
 #ifdef BSP_USING_PULSE_ENCODER3
     PULSE_ENCODER3_CONFIG,
 #endif
+#if defined(SOC_SERIES_N32H7xx)
 #ifdef BSP_USING_PULSE_ENCODER4
     PULSE_ENCODER4_CONFIG,
 #endif
+#endif /* SOC_SERIES_N32H7xx */
 #ifdef BSP_USING_PULSE_ENCODER5
     PULSE_ENCODER5_CONFIG,
 #endif
@@ -139,6 +142,18 @@ static struct n32_pulse_encoder_device n32_pulse_encoder_obj[] = {
 #endif
 };
 
+static rt_uint32_t pulse_encoder_auto_reload_get(TIM_Module *timer)
+{
+#if defined(SOC_SERIES_N32H49x)
+    if (IS_GTIM1_4_DEVICE(timer))
+    {
+        return 0x7FFFFFFFU;
+    }
+#endif /* SOC_SERIES_N32H49x */
+
+    return AUTO_RELOAD_VALUE;
+}
+
 /**
  * @brief Initialize the pulse encoder hardware.
  */
@@ -156,7 +171,7 @@ static rt_err_t pulse_encoder_init(struct rt_pulse_encoder_device *pulse_encoder
     TIM_InitTimBaseStruct(&TIM_TimeBaseStructure);
     TIM_TimeBaseStructure.Prescaler = 0;
     TIM_TimeBaseStructure.CounterMode = TIM_CNT_MODE_UP;
-    TIM_TimeBaseStructure.Period = AUTO_RELOAD_VALUE;
+    TIM_TimeBaseStructure.Period = pulse_encoder_auto_reload_get(n32_device->timer);
     TIM_TimeBaseStructure.ClkDiv = TIM_CLK_DIV1;
     TIM_InitTimeBase(n32_device->timer, &TIM_TimeBaseStructure);
 
@@ -180,7 +195,11 @@ static rt_err_t pulse_encoder_init(struct rt_pulse_encoder_device *pulse_encoder
 
     /* Clear update flag and enable update interrupt source */
     TIM_ClearFlag(n32_device->timer, TIM_FLAG_UPDATE);
+#if defined(SOC_SERIES_N32H47x_48x) || defined(SOC_SERIES_N32H49x)
+    TIM_ConfigUpdateEvt(n32_device->timer, ENABLE);
+#else
     TIM_EnableUpdateEvt(n32_device->timer, ENABLE);
+#endif
 
     LOG_D("%s init success", n32_device->name);
 
@@ -188,15 +207,20 @@ static rt_err_t pulse_encoder_init(struct rt_pulse_encoder_device *pulse_encoder
 }
 
 /**
- * @brief Get the accumulated encoder count (handles 16-bit overflow).
+ * @brief Get the accumulated encoder count (handles counter overflow).
  */
 static rt_int32_t pulse_encoder_get_count(struct rt_pulse_encoder_device *pulse_encoder)
 {
     struct n32_pulse_encoder_device *n32_device;
+    rt_uint32_t auto_reload;
+    rt_int64_t count;
 
     n32_device = (struct n32_pulse_encoder_device *)pulse_encoder;
+    auto_reload = pulse_encoder_auto_reload_get(n32_device->timer);
+    count = TIM_GetCnt(n32_device->timer);
+    count += (rt_int64_t)n32_device->over_under_flowcount * ((rt_int64_t)auto_reload + 1);
 
-    return (rt_int32_t)((rt_int16_t)TIM_GetCnt(n32_device->timer) + n32_device->over_under_flowcount * (AUTO_RELOAD_VALUE + 1));
+    return (rt_int32_t)count;
 }
 
 /**
@@ -260,7 +284,7 @@ static void pulse_encoder_update_isr(struct n32_pulse_encoder_device *device)
         TIM_ClearFlag(device->timer, TIM_FLAG_UPDATE);
 
         /* Check counting direction */
-        if (TIM_GetFlagStatus(device->timer, TIM_DOWN_COUNTING) != RESET)
+        if ((device->timer->CTRL1 & TIM_CNT_MODE_DOWN) != 0U)
         {
             device->over_under_flowcount--;
         }
@@ -335,6 +359,7 @@ void ATIM3_UP_IRQHandler(void)
 }
 #endif
 
+#if defined(SOC_SERIES_N32H7xx)
 #ifdef BSP_USING_PULSE_ENCODER4
 void ATIM4_UP_IRQHandler(void)
 {
@@ -343,7 +368,9 @@ void ATIM4_UP_IRQHandler(void)
     rt_interrupt_leave();
 }
 #endif
+#endif /* SOC_SERIES_N32H7xx */
 
+#if defined(SOC_SERIES_N32H7xx)
 #ifdef BSP_USING_PULSE_ENCODER5
 void GTIMA1_IRQHandler(void)
 {
@@ -433,6 +460,97 @@ void GTIMB3_IRQHandler(void)
     rt_interrupt_leave();
 }
 #endif
+#elif defined(SOC_SERIES_N32H47x_48x) || defined(SOC_SERIES_N32H49x)
+#ifdef BSP_USING_PULSE_ENCODER5
+void GTIM1_IRQHandler(void)
+{
+    rt_interrupt_enter();
+    pulse_encoder_update_isr(&n32_pulse_encoder_obj[PULSE_ENCODER5_INDEX]);
+    rt_interrupt_leave();
+}
+#endif
+
+#ifdef BSP_USING_PULSE_ENCODER6
+void GTIM2_IRQHandler(void)
+{
+    rt_interrupt_enter();
+    pulse_encoder_update_isr(&n32_pulse_encoder_obj[PULSE_ENCODER6_INDEX]);
+    rt_interrupt_leave();
+}
+#endif
+
+#ifdef BSP_USING_PULSE_ENCODER7
+void GTIM3_IRQHandler(void)
+{
+    rt_interrupt_enter();
+    pulse_encoder_update_isr(&n32_pulse_encoder_obj[PULSE_ENCODER7_INDEX]);
+    rt_interrupt_leave();
+}
+#endif
+
+#ifdef BSP_USING_PULSE_ENCODER8
+void GTIM4_IRQHandler(void)
+{
+    rt_interrupt_enter();
+    pulse_encoder_update_isr(&n32_pulse_encoder_obj[PULSE_ENCODER8_INDEX]);
+    rt_interrupt_leave();
+}
+#endif
+
+#ifdef BSP_USING_PULSE_ENCODER9
+void GTIM5_IRQHandler(void)
+{
+    rt_interrupt_enter();
+    pulse_encoder_update_isr(&n32_pulse_encoder_obj[PULSE_ENCODER9_INDEX]);
+    rt_interrupt_leave();
+}
+#endif
+
+#ifdef BSP_USING_PULSE_ENCODER10
+void GTIM6_IRQHandler(void)
+{
+    rt_interrupt_enter();
+    pulse_encoder_update_isr(&n32_pulse_encoder_obj[PULSE_ENCODER10_INDEX]);
+    rt_interrupt_leave();
+}
+#endif
+
+#ifdef BSP_USING_PULSE_ENCODER11
+void GTIM7_IRQHandler(void)
+{
+    rt_interrupt_enter();
+    pulse_encoder_update_isr(&n32_pulse_encoder_obj[PULSE_ENCODER11_INDEX]);
+    rt_interrupt_leave();
+}
+#endif
+
+#ifdef BSP_USING_PULSE_ENCODER12
+void GTIM8_IRQHandler(void)
+{
+    rt_interrupt_enter();
+    pulse_encoder_update_isr(&n32_pulse_encoder_obj[PULSE_ENCODER12_INDEX]);
+    rt_interrupt_leave();
+}
+#endif
+
+#ifdef BSP_USING_PULSE_ENCODER13
+void GTIM9_IRQHandler(void)
+{
+    rt_interrupt_enter();
+    pulse_encoder_update_isr(&n32_pulse_encoder_obj[PULSE_ENCODER13_INDEX]);
+    rt_interrupt_leave();
+}
+#endif
+
+#ifdef BSP_USING_PULSE_ENCODER14
+void GTIM10_IRQHandler(void)
+{
+    rt_interrupt_enter();
+    pulse_encoder_update_isr(&n32_pulse_encoder_obj[PULSE_ENCODER14_INDEX]);
+    rt_interrupt_leave();
+}
+#endif
+#endif /* SOC_SERIES_N32H7xx */
 
 /* ---- Device Registration ---- */
 

@@ -150,6 +150,9 @@
 #define RT_SERIAL_USING_DMA
 #define RT_SERIAL_RB_BUFSZ 512
 #define RT_USING_PIN
+#define RT_USING_PWM
+#define RT_USING_PULSE_ENCODER
+#define RT_USING_CLOCK_TIME
 /* end of Device Drivers */
 
 /* C/C++ and POSIX layer */
@@ -438,6 +441,15 @@
 #define BSP_USING_GPIO
 #define BSP_USING_UART
 #define BSP_USING_UART1
+#define BSP_USING_CLOCK_TIMER
+#define BSP_USING_GTIM1
+#define BSP_USING_PWM
+#define BSP_USING_PWM1
+#define BSP_USING_PWM1_CH1
+#define BSP_USING_LPTIM
+#define BSP_USING_LPTIM2
+#define BSP_USING_PULSE_ENCODER
+#define BSP_USING_PULSE_ENCODER13
 /* end of On-chip Peripheral Drivers */
 
 /* Board extended module Drivers */

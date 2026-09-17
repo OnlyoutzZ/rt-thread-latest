@@ -150,6 +150,8 @@
 #define RT_USING_SERIAL_V1
 #define RT_SERIAL_USING_DMA
 #define RT_SERIAL_RB_BUFSZ 512
+#define RT_USING_CLOCK_TIME
+#define RT_USING_PULSE_ENCODER
 #define RT_USING_PIN
 /* end of Device Drivers */
 
@@ -439,6 +441,10 @@
 #define BSP_USING_GPIO
 #define BSP_USING_UART
 #define BSP_USING_UART1
+#define BSP_USING_PULSE_ENCODER
+#define BSP_USING_PULSE_ENCODER13
+#define BSP_USING_LPTIM
+#define BSP_USING_LPTIM2
 /* end of On-chip Peripheral Drivers */
 
 /* Board extended module Drivers */
