@@ -94,6 +94,11 @@ static int pulse_encoder_sample(void)
         return ret;
     }
 
+    /* Start from a known state. The counter is not reset when the encoder is
+     * opened, so a timer left free-running by someone else (e.g. the GTIM9 PWM
+     * test, which shares this timer) would otherwise leak into the reading. */
+    rt_device_control(encoder_dev, PULSE_ENCODER_CMD_CLEAR_COUNT, RT_NULL);
+
     for (index = 0; index < 10; index++)
     {
         pulse_encoder_generate_cycle(RT_FALSE);
